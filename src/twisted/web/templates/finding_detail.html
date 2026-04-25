@@ -1,0 +1,50 @@
+{% extends "_base.html" %}
+{% block title %}Finding #{{ finding.id }} — Twisted{% endblock %}
+{% block content %}
+<section>
+  <p class="muted">
+    <a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> ·
+    <a href="/engagements/{{ engagement.id }}/findings">all findings</a>
+  </p>
+  <h2>#{{ finding.id }} {{ finding.title }}</h2>
+  <p>
+    <span class="status status-{{ finding.severity }}">{{ finding.severity }}</span>
+    {% if finding.cvss_score is not none %} · CVSS {{ '%.1f' % finding.cvss_score }}{% endif %}
+    {% if finding.cwe %} · {{ finding.cwe }}{% endif %}
+    · status: <strong>{{ finding.status }}</strong>
+  </p>
+
+  {% if finding.cvss_vector %}
+  <p class="muted"><code>{{ finding.cvss_vector }}</code></p>
+  {% endif %}
+
+  <h3>CVSS Calculator</h3>
+  <form id="cvss-form" hx-post="/engagements/{{ engagement.id }}/findings/{{ finding.id }}/cvss"
+        hx-target="#cvss-result" hx-swap="innerHTML">
+    <fieldset>
+      <legend>Base metrics</legend>
+      {% set metrics = [
+        ('AV', 'Attack Vector', [('N','Network'),('A','Adjacent'),('L','Local'),('P','Physical')]),
+        ('AC', 'Attack Complexity', [('L','Low'),('H','High')]),
+        ('PR', 'Privileges Required', [('N','None'),('L','Low'),('H','High')]),
+        ('UI', 'User Interaction', [('N','None'),('R','Required')]),
+        ('S',  'Scope', [('U','Unchanged'),('C','Changed')]),
+        ('C',  'Confidentiality', [('N','None'),('L','Low'),('H','High')]),
+        ('I',  'Integrity', [('N','None'),('L','Low'),('H','High')]),
+        ('A',  'Availability', [('N','None'),('L','Low'),('H','High')]),
+      ] %}
+      {% for code, label, values in metrics %}
+      <label>{{ code }} ({{ label }}):
+        <select name="{{ code }}">
+          {% for v, name in values %}
+          <option value="{{ v }}">{{ v }} — {{ name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">Calculate</button>
+  </form>
+  <div id="cvss-result"></div>
+</section>
+{% endblock %}

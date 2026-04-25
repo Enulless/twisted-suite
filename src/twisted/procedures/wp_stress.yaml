@@ -1,0 +1,290 @@
+id: wp_stress
+name: "WordPress Security Stress Testing"
+description: >
+  Four-phase procedure: pre-engagement setup, stress testing
+  (load / DoS simulation), automated vulnerability scanning, and
+  analysis + remediation. Authorised use against owned WordPress
+  installations only.
+
+stages:
+  # ───────────────────────────────────────────────
+  # PHASE 1 — Pre-Engagement Setup
+  # ───────────────────────────────────────────────
+  - id: phase1
+    name: "Pre-Engagement Setup"
+    objective: >
+      Establish a controlled, documented baseline before any active
+      testing. Confirm scope, capture rollback point, install monitoring.
+    steps:
+      - id: wp_stress.phase1.scope_confirm
+        name: "Confirm target scope (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: []
+        why: >
+          Stress testing without confirmation of ownership is illegal
+          in most jurisdictions. Many shared hosts also prohibit
+          stress testing in their TOS.
+        prompts:
+          - "Record the exact target domain(s) and IP(s)"
+          - "Verify you are the registrant or have written authorization on file"
+          - "Notify your hosting provider if your plan prohibits stress testing"
+        collect:
+          - prompt: "Target domain(s)"
+            kind: text
+            store: wp_target_domains
+          - prompt: "Authorization evidence (URL or filename)"
+            kind: text
+            store: wp_auth_evidence
+
+      - id: wp_stress.phase1.backup
+        name: "Create full site backup (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: []
+        why: >
+          Stress + scan can destabilise the site. Always have a clean
+          rollback target before starting.
+        prompts:
+          - "Use UpdraftPlus / hosting cPanel / Plesk to generate full backup (files + DB)"
+          - "Download the backup off-site"
+          - "Record SHA-256 of the backup file"
+        collect:
+          - prompt: "Backup file path"
+            kind: text
+            store: wp_backup_path
+          - prompt: "Backup SHA-256"
+            kind: text
+            store: wp_backup_sha
+
+      - id: wp_stress.phase1.baseline_ab
+        name: "Baseline performance with Apache Bench"
+        mode: auto
+        runtime: linux
+        requires: [ab]
+        why: >
+          Capture baseline req/sec, mean response time, p99 latency,
+          error rate. Every Phase 2 result is compared against this.
+        what_to_collect: [req_per_sec, mean_ms, p99_ms, error_rate]
+        module: twisted.modules.wpstress.ab_baseline:run
+        params:
+          url: "{{ engagement.primary_domain }}"
+          requests: 100
+          concurrency: 5
+        outputs: [{ kind: baseline }]
+        training: { lesson: wp_stress/phase1/baseline.md }
+
+      - id: wp_stress.phase1.headers_baseline
+        name: "Capture pre-stress security-headers baseline"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          The Phase 3 header diff compares stressed-state headers
+          against this baseline to identify error-state information
+          leakage.
+        module: twisted.modules.recon.headers_audit:run
+        params: { host: "{{ engagement.primary_domain }}" }
+
+  # ───────────────────────────────────────────────
+  # PHASE 2 — Stress Testing
+  # ───────────────────────────────────────────────
+  - id: phase2
+    name: "Stress Testing (Load / DoS Simulation)"
+    objective: >
+      Identify the request volume, concurrency level, and endpoint
+      types that cause WordPress to degrade, error out, or expose
+      diagnostic information.
+    steps:
+      - id: wp_stress.phase2.warmup
+        name: "Warm-up calibration run"
+        mode: auto
+        runtime: linux
+        requires: [ab]
+        why: >
+          Re-runs the baseline ab command to confirm system state
+          matches the recorded baseline before escalating load.
+        module: twisted.modules.wpstress.ab_baseline:run
+        params:
+          url: "{{ engagement.primary_domain }}"
+          requests: 500
+          concurrency: 10
+
+      - id: wp_stress.phase2.escalating
+        name: "Escalating concurrency (wrk)"
+        mode: auto
+        runtime: linux
+        requires: [wrk]
+        why: >
+          Step-up from 50 -> 100 -> 250 -> 500 concurrent users to
+          find the saturation point. Stops automatically when error
+          rate > 50% or response time > 5x baseline.
+        what_to_collect: [saturation_concurrency, peak_rps, error_rate_at_saturation]
+        module: twisted.modules.wpstress.wrk_escalating:run
+        params:
+          url: "{{ engagement.primary_domain }}"
+          duration: 30
+          threads: 4
+          rounds: [50, 100, 250, 500]
+
+      - id: wp_stress.phase2.endpoint_stress
+        name: "Targeted endpoint stress (login / admin-ajax / xmlrpc)"
+        mode: auto
+        runtime: linux
+        requires: [ab]
+        why: >
+          High-cost WordPress endpoints (wp-login.php, admin-ajax.php,
+          ?s=, xmlrpc.php) often saturate with much lower load than
+          the homepage. Documents which endpoint types accept the
+          highest sustained load before degrading.
+        module: twisted.modules.wpstress.endpoint_stress:run
+        params:
+          url: "{{ engagement.primary_domain }}"
+          requests: 500
+          concurrency: 25
+
+      - id: wp_stress.phase2.locust_walkthrough
+        name: "Scenario-based load with Locust (walkthrough)"
+        mode: walkthrough
+        runtime: linux
+        requires: [locust]
+        why: >
+          Single-endpoint stress tests miss session-based saturation.
+          A multi-step locustfile (visit homepage -> visit post ->
+          submit comment -> search) exercises caching, DB connections,
+          and PHP workers in a more realistic way.
+        prompts:
+          - "Generate the locustfile via: twisted-utility wp_stress.gen_locustfile"
+          - "Run: locust -f locustfile.py --headless -u 200 -r 10 --host=https://<target> --run-time 2m"
+          - "Capture the Locust HTML report at completion"
+        collect:
+          - prompt: "Upload the Locust HTML report"
+            kind: file
+            target: evidence/locust/
+
+  # ───────────────────────────────────────────────
+  # PHASE 3 — Automated Vulnerability Scanning
+  # ───────────────────────────────────────────────
+  - id: phase3
+    name: "Automated Vulnerability Scanning"
+    objective: >
+      Identify what an attacker can extract from the stressed or idle
+      site using automated scanners — version strings, misconfigured
+      headers, known CVEs, accessible sensitive files.
+    steps:
+      - id: wp_stress.phase3.headers_diff
+        name: "Stressed-state header diff vs baseline"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          Under load, WordPress error pages may leak stack traces,
+          PHP versions, or DB error messages absent from idle
+          responses. Compares post-stress headers + response codes
+          to the Phase 1 baseline to flag information disclosure.
+        module: twisted.modules.wpstress.headers_diff:run
+        params: { host: "{{ engagement.primary_domain }}" }
+
+      - id: wp_stress.phase3.exposed_files
+        name: "Exposed sensitive-file probe"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          A 200 response on wp-config.php.bak, .env, debug.log,
+          xmlrpc.php (etc.) is a critical finding regardless of
+          stress level. Cheap to run, high value.
+        module: twisted.modules.wpstress.exposed_files:run
+        params: { host: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: finding }]
+
+      - id: wp_stress.phase3.wpscan
+        name: "WPScan (plugins, themes, users, core CVEs)"
+        mode: auto
+        runtime: linux
+        requires: [wpscan]
+        why: >
+          WPScan enumerates installed plugins/themes/users and
+          cross-references against the WPScan vulnerability
+          database. Free tier is sufficient for daily use.
+        what_to_collect: [plugins, themes, users, core_version, plugin_cves]
+        module: twisted.modules.wpstress.wpscan_run:run
+        params: { host: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: finding }]
+
+      - id: wp_stress.phase3.nikto
+        name: "Nikto generic web-server scan"
+        mode: auto
+        runtime: linux
+        requires: [nikto]
+        why: >
+          Nikto checks for outdated server software, dangerous HTTP
+          methods, default files, and known CVEs across the
+          web-server layer below WordPress.
+        module: twisted.modules.recon.nikto_scan:run
+        params: { host: "{{ engagement.primary_domain }}" }
+
+      - id: wp_stress.phase3.zap_walkthrough
+        name: "OWASP ZAP active scan (walkthrough)"
+        mode: walkthrough
+        runtime: windows
+        requires: [zap]
+        why: >
+          ZAP picks up XSS / SQLi / SSRF that WPScan misses. Run as
+          a walkthrough on the Windows side because the GUI is the
+          most efficient way to scope the active scan.
+        prompts:
+          - "Open ZAP, set context to {{ engagement.primary_domain }}"
+          - "Spider the site, then run Active Scan"
+          - "Export Report > HTML"
+        collect:
+          - prompt: "Upload the exported HTML report"
+            kind: file
+            target: evidence/zap/
+
+  # ───────────────────────────────────────────────
+  # PHASE 4 — Analysis & Remediation
+  # ───────────────────────────────────────────────
+  - id: phase4
+    name: "Analysis, Remediation & Hardening"
+    objective: >
+      Translate Phase 2/3 findings into prioritised remediations,
+      verify each fix reduces or eliminates the identified risk,
+      and re-test to confirm.
+    steps:
+      - id: wp_stress.phase4.remediation_matrix
+        name: "Generate remediation matrix"
+        mode: auto
+        runtime: either
+        requires: []
+        why: >
+          Compiles all findings into the prioritised matrix from
+          the WP procedure doc (severity / fix-by target / owner).
+        module: twisted.modules.wpstress.remediation:build_matrix
+        params: { engagement_id: "{{ engagement.id }}" }
+
+      - id: wp_stress.phase4.retest_baseline
+        name: "Re-test baseline after remediation"
+        mode: auto
+        runtime: linux
+        requires: [ab]
+        why: >
+          Re-runs the same ab command from Phase 1 to confirm
+          remediation didn't degrade baseline performance.
+        module: twisted.modules.wpstress.ab_baseline:run
+        params:
+          url: "{{ engagement.primary_domain }}"
+          requests: 100
+          concurrency: 5
+
+      - id: wp_stress.phase4.report
+        name: "Build WordPress hardening report"
+        mode: auto
+        runtime: either
+        requires: []
+        why: >
+          Renders the engagement as a WordPress-specific report with
+          the remediation matrix front-and-centre, before/after
+          metrics, and re-test evidence.
+        module: twisted.modules.report.builder:build
+        params: { engagement_id: "{{ engagement.id }}", formats: [html, markdown] }

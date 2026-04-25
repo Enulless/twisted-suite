@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Twisted{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link rel="stylesheet" href="/static/twisted.css">
+</head>
+<body>
+  <header>
+    <h1><a href="/">Twisted Pen Testing Suite</a></h1>
+    <nav>
+      <a href="/">Engagements</a>
+      <a href="/workers">Workers</a>
+      <a href="/procedures">Procedures</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <span class="muted">Twisted v{{ version }} &middot; engine: {{ engine_url }}</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{% extends "_base.html" %}
+{% block title %}{{ engagement.client }} — Master Spreadsheet{% endblock %}
+{% block content %}
+<section>
+  <h2><a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Master Spreadsheet</h2>
+  <p class="muted">
+    {{ assets|length }} asset(s) ·
+    {{ assets|selectattr('in_scope')|list|length }} in scope
+  </p>
+  <table class="sortable">
+    <thead>
+      <tr>
+        <th>Host</th><th>IP</th><th>Env</th>
+        <th>Risk</th><th>Open ports</th><th>Techs</th><th>CVEs</th>
+        <th>Source</th><th>Scope</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in assets %}
+      <tr class="{{ 'oos' if not a.in_scope else '' }}">
+        <td><strong>{{ a.host }}</strong></td>
+        <td>{{ a.ip or '—' }}</td>
+        <td>{{ a.env_type or '—' }}</td>
+        <td><span class="risk risk-{{ a.tier }}">{{ a.risk_total }}</span></td>
+        <td class="muted">{{ a.ports|map(attribute='port')|join(', ') or '—' }}</td>
+        <td class="muted">{{ a.techs|map(attribute='name')|join(', ') or '—' }}</td>
+        <td>{{ a.cves|length }}</td>
+        <td class="muted">{{ a.source or '—' }}</td>
+        <td>{{ 'in' if a.in_scope else 'OOS' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="muted">No assets discovered yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

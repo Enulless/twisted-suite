@@ -1,0 +1,27 @@
+{% extends "_base.html" %}
+{% block title %}{{ engagement.client }} — Step Runs{% endblock %}
+{% block content %}
+<section>
+  <h2><a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Step runs ({{ runs|length }})</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Step</th><th>Stage</th><th>Mode</th><th>Status</th><th>Worker</th><th>Summary</th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td><code>{{ r.step_id }}</code></td>
+        <td>{{ r.stage or '—' }}</td>
+        <td>{{ r.mode }}</td>
+        <td><span class="status status-{{ r.status }}">{{ r.status }}</span></td>
+        <td>{{ r.worker_id or '—' }}</td>
+        <td class="muted">{{ (r.output_summary or '')[:100] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No step runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

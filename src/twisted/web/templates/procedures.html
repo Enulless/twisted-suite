@@ -1,0 +1,27 @@
+{% extends "_base.html" %}
+{% block title %}Procedures — Twisted{% endblock %}
+{% block content %}
+<section>
+  <h2>Procedures</h2>
+  {% for proc in procedures %}
+  <article>
+    <h3>{{ proc.id }} — {{ proc.name }}</h3>
+    <p class="muted">{{ proc.description }}</p>
+    {% for stage in proc.stages %}
+    <details>
+      <summary><strong>{{ stage.id }}</strong> — {{ stage.name }} ({{ stage.steps|length }} steps)</summary>
+      <ul>
+        {% for s in stage.steps %}
+        <li>
+          <code>{{ s.id }}</code> · {{ s.name }}
+          <span class="badge mode-{{ s.mode }}">{{ s.mode }}</span>
+          <span class="badge runtime-{{ s.runtime }}">{{ s.runtime }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endfor %}
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

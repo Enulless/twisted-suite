@@ -1,0 +1,29 @@
+{% extends "_base.html" %}
+{% block title %}Workers — Twisted{% endblock %}
+{% block content %}
+<section>
+  <h2>Workers ({{ workers|length }})</h2>
+  <p class="muted" hx-get="/htmx/workers" hx-trigger="every 5s" hx-swap="outerHTML">
+    Auto-refreshing every 5 seconds...
+  </p>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Hostname</th><th>OS</th><th>Status</th><th>Capabilities</th><th>Last seen</th></tr>
+    </thead>
+    <tbody>
+      {% for w in workers %}
+      <tr>
+        <td>{{ w.id }}</td>
+        <td>{{ w.hostname }}</td>
+        <td>{{ w.os }}</td>
+        <td><span class="status status-{{ w.status }}">{{ w.status }}</span></td>
+        <td class="muted">{{ w.capabilities|join(', ') }}</td>
+        <td>{{ w.last_seen[:19] if w.last_seen else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No workers connected.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "_base.html" %}
+{% block title %}{{ engagement.client }} — Twisted{% endblock %}
+{% block content %}
+<section>
+  <h2>{{ engagement.client }}</h2>
+  <p class="muted">
+    Domain: <strong>{{ engagement.primary_domain or '—' }}</strong> &middot;
+    Status: <span class="status status-{{ engagement.status }}">{{ engagement.status }}</span> &middot;
+    Created: {{ engagement.created_at[:10] }}
+  </p>
+  <p>
+    <a href="/engagements/{{ engagement.id }}/assets">Master spreadsheet</a> ·
+    <a href="/engagements/{{ engagement.id }}/findings">Findings</a> ·
+    <a href="/engagements/{{ engagement.id }}/runs">Step runs</a> ·
+    <a href="/engagements/{{ engagement.id }}/report">Report preview</a>
+  </p>
+</section>
+
+<section>
+  <h3>Scope</h3>
+  <table>
+    <thead><tr><th>Kind</th><th>Pattern</th></tr></thead>
+    <tbody>
+      {% for r in scope %}
+      <tr><td>{{ r.kind }}</td><td><code>{{ r.pattern }}</code></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h3>Stage progress ({{ procedure_id }})</h3>
+  {% for stage in stages %}
+  <details {% if loop.first %}open{% endif %}>
+    <summary><strong>{{ stage.id }}</strong> — {{ stage.name }}</summary>
+    <table>
+      <thead>
+        <tr><th>Step</th><th>Mode</th><th>Runtime</th><th>Required caps</th></tr>
+      </thead>
+      <tbody>
+        {% for s in stage.steps %}
+        <tr>
+          <td>{{ s.id }}<br><span class="muted">{{ s.name }}</span></td>
+          <td><span class="badge mode-{{ s.mode }}">{{ s.mode }}</span></td>
+          <td><span class="badge runtime-{{ s.runtime }}">{{ s.runtime }}</span></td>
+          <td class="muted">{{ s.requires|join(', ') or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endfor %}
+</section>
+{% endblock %}

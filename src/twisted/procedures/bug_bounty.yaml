@@ -1,0 +1,538 @@
+id: bb
+name: "Bug Bounty Recon & Vulnerability Assessment"
+description: >
+  Five-stage methodology covering passive reconnaissance, subdomain
+  discovery, fingerprinting, active testing, and reporting. Source of
+  truth is bug_bounty_procedure.docx.
+
+stages:
+  # ───────────────────────────────────────────────
+  # STAGE 1 — Passive Domain Intelligence
+  # ───────────────────────────────────────────────
+  - id: stage1
+    name: "Passive Domain Intelligence"
+    objective: >
+      Identify all domains, subdomains, and associated infrastructure
+      using entirely passive methods. No direct interaction with the
+      client's infrastructure during this stage.
+    steps:
+      - id: bb.stage1.crtsh
+        name: "Certificate Transparency Log Harvesting"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          Certificate Transparency (CT) logs are public, append-only
+          records of every SSL/TLS certificate issued. They surface
+          forgotten subdomains and naming conventions without ever
+          touching the target's own infrastructure.
+        what_to_collect: [subdomains, san_entries, issuers, expiry_dates]
+        module: twisted.modules.recon.crtsh:run
+        params: { domain: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: asset, source: "crt.sh" }]
+        training: { lesson: bb/stage1/crtsh.md, quiz: bb/stage1/crtsh.yaml }
+        next: [bb.stage1.dns_enum, bb.stage1.whois]
+
+      - id: bb.stage1.censys_walkthrough
+        name: "Censys Certificate Search (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          Censys indexes every publicly observable certificate and
+          maintains a host search interface that complements crt.sh
+          coverage. Often surfaces subdomains crt.sh missed.
+        prompts:
+          - "Open https://search.censys.io and sign in to your free account."
+          - "Switch to the Certificates search and run: parsed.names:{{ engagement.primary_domain }}"
+          - "Cross-reference SAN entries against your existing subdomain list."
+        collect:
+          - prompt: "How many additional subdomains did Censys reveal?"
+            kind: integer
+            store: censys_extra_count
+          - prompt: "Paste any new subdomains (one per line)"
+            kind: text
+            store: censys_extra_hosts
+        training: { lesson: bb/stage1/censys.md }
+
+      - id: bb.stage1.dns_enum
+        name: "DNS Record Enumeration"
+        mode: auto
+        runtime: linux
+        requires: [dig]
+        why: >
+          DNS records map domain names to infrastructure components.
+          Each record type reveals something different: A/AAAA for hosts,
+          MX for mail, NS for authoritative servers, TXT for SPF/DKIM/DMARC.
+        what_to_collect: [a, aaaa, mx, ns, txt, cname, soa]
+        module: twisted.modules.recon.dns_enum:run
+        params: { host: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: dns_record }]
+        training: { lesson: bb/stage1/dns_enum.md }
+
+      - id: bb.stage1.whois
+        name: "WHOIS Registrar Intelligence"
+        mode: auto
+        runtime: linux
+        requires: [whois]
+        why: >
+          WHOIS contains registrar, expiry dates, and nameservers.
+          Soon-to-expire domains and recently transferred registrars
+          flag neglected or recently acquired infrastructure.
+        what_to_collect: [registrar, expiry, nameservers]
+        module: twisted.modules.recon.whois_lookup:run
+        params: { domain: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: registrar_data }]
+        training: { lesson: bb/stage1/whois.md }
+
+      - id: bb.stage1.email_security
+        name: "SPF / DKIM / DMARC Analysis"
+        mode: auto
+        runtime: linux
+        requires: [dig]
+        why: >
+          Missing or weak SPF / DKIM / DMARC enables email spoofing.
+          A missing DMARC + permissive SPF combination is trivially
+          exploitable for phishing campaigns impersonating the client.
+        what_to_collect: [spf_record, dkim_records, dmarc_record, policy_strictness]
+        module: twisted.modules.recon.email_security:run
+        params: { domain: "{{ engagement.primary_domain }}" }
+        outputs: [{ kind: email_finding }]
+        training: { lesson: bb/stage1/email_security.md }
+
+  # ───────────────────────────────────────────────
+  # STAGE 2 — Subdomain & Host Discovery
+  # ───────────────────────────────────────────────
+  - id: stage2
+    name: "Subdomain & Host Discovery"
+    objective: >
+      Expand the inventory using specialised public databases and
+      indexes for infrastructure that never had a certificate or DNS
+      record but is still publicly accessible.
+    steps:
+      - id: bb.stage2.subfinder
+        name: "subfinder (multi-source aggregator)"
+        mode: auto
+        runtime: linux
+        requires: [subfinder]
+        why: >
+          subfinder queries dozens of passive sources simultaneously
+          (CT logs, search engine indexes, threat-intel databases).
+          Gives the broadest single-tool subdomain coverage.
+        what_to_collect: [subdomains]
+        module: twisted.modules.recon.aggregators:subfinder
+        params: { domain: "{{ engagement.primary_domain }}" }
+        training: { lesson: bb/stage2/subfinder.md }
+
+      - id: bb.stage2.assetfinder
+        name: "assetfinder (alternative aggregator)"
+        mode: auto
+        runtime: linux
+        requires: [assetfinder]
+        why: >
+          assetfinder uses a different set of upstream sources than
+          subfinder; running both compensates for coverage gaps.
+        module: twisted.modules.recon.aggregators:assetfinder
+        params: { domain: "{{ engagement.primary_domain }}" }
+        training: { lesson: bb/stage2/assetfinder.md }
+
+      - id: bb.stage2.amass
+        name: "amass (passive)"
+        mode: auto
+        runtime: linux
+        requires: [amass]
+        why: >
+          amass is the OWASP-maintained recon tool with the deepest
+          source list. Slower than subfinder/assetfinder but worth
+          running for high-value engagements.
+        module: twisted.modules.recon.aggregators:amass_passive
+        params: { domain: "{{ engagement.primary_domain }}" }
+        training: { lesson: bb/stage2/amass.md }
+
+      - id: bb.stage2.fofa_walkthrough
+        name: "Fofa technology indexing (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          Fofa has different geographic scanning coverage than Censys
+          and excels at fingerprinting database/admin services exposed
+          on non-standard ports.
+        prompts:
+          - "Open https://fofa.info and sign in."
+          - 'Search: domain="{{ engagement.primary_domain }}"'
+          - 'Search for exposed admin: domain="{{ engagement.primary_domain }}" && title="admin"'
+          - 'Search for exposed databases: domain="{{ engagement.primary_domain }}" && port="3306"'
+        collect:
+          - prompt: "Hosts with exposed admin interfaces"
+            kind: text
+            store: fofa_admin_hosts
+          - prompt: "Hosts with exposed database ports"
+            kind: text
+            store: fofa_db_hosts
+        training: { lesson: bb/stage2/fofa.md }
+
+      - id: bb.stage2.virustotal_walkthrough
+        name: "VirusTotal historical IPs (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          VirusTotal's Relations tab shows every historical IP a domain
+          has resolved to. Old IPs may still host abandoned or
+          unpatched copies of the application.
+        prompts:
+          - "Open https://www.virustotal.com and search the primary domain"
+          - "Click the Relations tab and review historical Resolutions"
+          - "For each historical IP that differs from current A record, search the IP and review co-hosted domains"
+        collect:
+          - prompt: "Historical IP addresses worth flagging"
+            kind: text
+            store: vt_historical_ips
+        training: { lesson: bb/stage2/virustotal.md }
+
+      - id: bb.stage2.google_dorking_walkthrough
+        name: "Google Advanced Search Operators (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          Google indexes configuration files, backups, exposed directory
+          listings, and admin panels. Dorking surfaces these without
+          touching the target.
+        prompts:
+          - "site:*.{{ engagement.primary_domain }}"
+          - 'site:{{ engagement.primary_domain }} inurl:admin OR inurl:administrator OR inurl:login'
+          - 'site:{{ engagement.primary_domain }} filetype:sql OR filetype:bak OR filetype:env'
+          - 'site:{{ engagement.primary_domain }} intitle:"index of"'
+        collect:
+          - prompt: "Sensitive URLs discovered (one per line)"
+            kind: text
+            store: dork_findings
+        training: { lesson: bb/stage2/google_dorking.md }
+
+  # ───────────────────────────────────────────────
+  # STAGE 3 — Fingerprinting & Service Identification
+  # ───────────────────────────────────────────────
+  - id: stage3
+    name: "Technology Fingerprinting & Service Identification"
+    objective: >
+      Identify exact software, frameworks, libraries, and versions on
+      each prioritised target. Output a risk-scored target list that
+      directs Stage 4 testing effort.
+    steps:
+      - id: bb.stage3.http_probe
+        name: "HTTP / HTTPS Probe"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          A single GET retrieves the response headers, status code,
+          page title, and rough technology hints. Cheap to run and
+          a prerequisite for the headers audit.
+        module: twisted.modules.recon.http_probe:run
+        params: { hosts: "{{ engagement.assets }}" }
+        training: { lesson: bb/stage3/http_probe.md }
+
+      - id: bb.stage3.headers_audit
+        name: "Security Headers Audit"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          Missing security headers enable entire classes of attacks
+          (clickjacking, XSS, MIME-sniffing, SSL stripping). Each
+          missing header maps to a finding with documented severity.
+        module: twisted.modules.recon.headers_audit:run
+        params: { hosts: "{{ engagement.assets }}" }
+        outputs: [{ kind: finding }]
+        training: { lesson: bb/stage3/headers_audit.md }
+
+      - id: bb.stage3.tls_audit
+        name: "TLS / Certificate Analysis"
+        mode: auto
+        runtime: linux
+        requires: [openssl]
+        why: >
+          Cert key strength, validity dates, issuer, and SAN entries
+          collectively reveal weak crypto, abandoned infrastructure,
+          and additional subdomains via the SAN field.
+        module: twisted.modules.recon.tls_audit:run
+        params: { hosts: "{{ engagement.assets }}" }
+        outputs: [{ kind: finding }]
+        training: { lesson: bb/stage3/tls_audit.md }
+
+      - id: bb.stage3.wappalyzer_walkthrough
+        name: "Wappalyzer Technology Fingerprint (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          Wappalyzer extension identifies CMS, framework, JS library,
+          and plugin versions across the page in one click. The
+          per-tech versions feed CVE lookups directly.
+        prompts:
+          - "Install the Wappalyzer extension if not already installed"
+          - "For each prioritised host, open the URL and click the Wappalyzer icon"
+          - "Record the tech list with versions"
+        collect:
+          - prompt: "Detected technologies with versions (one per line, format: host|tech|version)"
+            kind: text
+            store: wappalyzer_tech
+        training: { lesson: bb/stage3/wappalyzer.md }
+
+      - id: bb.stage3.cve_lookup
+        name: "NVD CVE Cross-Reference"
+        mode: auto
+        runtime: either
+        requires: [network]
+        why: >
+          Every detected technology version is cross-referenced against
+          the NVD to surface published CVEs. Each CVE is attached to
+          the matching asset for risk-scoring input.
+        module: twisted.modules.recon.nvd_lookup:run
+        params: { engagement_id: "{{ engagement.id }}" }
+        outputs: [{ kind: cve }]
+        training: { lesson: bb/stage3/cve_lookup.md }
+
+      - id: bb.stage3.risk_score
+        name: "Risk Scoring & Tier Classification"
+        mode: auto
+        runtime: either
+        requires: []
+        why: >
+          Applies the bug-bounty doc's scoring matrix (software age,
+          known CVEs, missing headers, cert health, email security,
+          infrastructure exposure, environment type, stack complexity)
+          and emits a sorted, tier-classified target list.
+        module: twisted.modules.recon.risk_scoring:run
+        params: { engagement_id: "{{ engagement.id }}" }
+        outputs: [{ kind: risk_score }]
+        training: { lesson: bb/stage3/risk_scoring.md }
+
+  # ───────────────────────────────────────────────
+  # STAGE 4 — Active Scanning & Vulnerability Testing
+  # ───────────────────────────────────────────────
+  - id: stage4
+    name: "Active Scanning & Vulnerability Testing"
+    objective: >
+      Probe targets actively to confirm and document exploitable
+      vulnerabilities. Move beyond passive intelligence to hands-on
+      testing.
+    steps:
+      - id: bb.stage4.nmap_top
+        name: "Nmap targeted port scan (common vuln ports)"
+        mode: auto
+        runtime: linux
+        requires: [nmap]
+        why: >
+          A targeted scan of the most commonly vulnerable ports
+          surfaces exposed databases, admin panels, and dev services
+          quickly. Run before the slower full-range scan.
+        module: twisted.modules.recon.nmap_scan:scan_top_ports
+        params: { hosts: "{{ engagement.assets }}" }
+        outputs: [{ kind: port }, { kind: tech }]
+        training: { lesson: bb/stage4/nmap_top.md }
+
+      - id: bb.stage4.nmap_full
+        name: "Nmap full-range scan (high-priority targets)"
+        mode: auto
+        runtime: linux
+        requires: [nmap]
+        why: >
+          Full 65k-port sweep for critical-tier assets. Slow but
+          finds services on non-standard ports.
+        module: twisted.modules.recon.nmap_scan:scan_full
+        params: { hosts: "{{ engagement.critical_assets }}" }
+        outputs: [{ kind: port }]
+        training: { lesson: bb/stage4/nmap_full.md }
+
+      - id: bb.stage4.nikto
+        name: "Nikto web server scan"
+        mode: auto
+        runtime: linux
+        requires: [nikto]
+        why: >
+          Nikto checks for outdated server software, dangerous HTTP
+          methods (PUT/DELETE/TRACE), default files, and known
+          web-server CVEs.
+        module: twisted.modules.recon.nikto_scan:run
+        params: { hosts: "{{ engagement.assets }}" }
+        outputs: [{ kind: finding }]
+        training: { lesson: bb/stage4/nikto.md }
+
+      - id: bb.stage4.zap_walkthrough
+        name: "OWASP ZAP Active Scan (walkthrough)"
+        mode: walkthrough
+        runtime: windows
+        requires: [zap]
+        why: >
+          OWASP ZAP is the GUI web app scanner. The walkthrough
+          drives the operator through context creation, spidering,
+          and active scanning, then collects the exported HTML report
+          as evidence.
+        prompts:
+          - "Open OWASP ZAP and create a context covering {{ asset.host }}."
+          - "Run Spider against the context, then start an Active Scan."
+          - "When complete, export via Report > Generate Report > HTML."
+        collect:
+          - prompt: "Upload the exported HTML report"
+            kind: file
+            target: evidence/zap/
+          - prompt: "How many High alerts did ZAP report?"
+            kind: integer
+            store: zap_high_count
+          - prompt: "How many Medium alerts?"
+            kind: integer
+            store: zap_medium_count
+        training: { lesson: bb/stage4/zap.md }
+
+      - id: bb.stage4.sqlmap_walkthrough
+        name: "sqlmap SQL injection probing (walkthrough)"
+        mode: walkthrough
+        runtime: linux
+        requires: [sqlmap]
+        why: >
+          sqlmap automates SQL injection detection across boolean,
+          time-based, error-based, UNION, and stacked-query
+          techniques. Walkthrough rather than auto-step because the
+          operator must scope --crawl to RoE-permitted endpoints.
+        prompts:
+          - 'Run: sqlmap -u "https://{{ asset.host }}/<vuln-endpoint>?<param>=test" --batch --dbs'
+          - "Confirm injection technique and extract DB list (do NOT extract user data)"
+          - "If POST: sqlmap -u URL --data='...' --batch --dbs"
+        collect:
+          - prompt: "Vulnerable URL + parameter"
+            kind: text
+            store: sqli_target
+          - prompt: "Injection technique that worked"
+            kind: text
+            store: sqli_technique
+          - prompt: "Database names extracted (proof-of-concept only)"
+            kind: text
+            store: sqli_dbs
+        training: { lesson: bb/stage4/sqlmap.md }
+
+      - id: bb.stage4.postman_walkthrough
+        name: "Postman API endpoint testing (walkthrough)"
+        mode: walkthrough
+        runtime: windows
+        requires: [postman]
+        why: >
+          Manual API testing for IDOR, mass assignment, missing auth,
+          missing rate-limit, and verbose error messages. Postman
+          collections double as reproducible PoC artifacts.
+        prompts:
+          - "For each API endpoint discovered in recon, create a Postman request"
+          - "Test without auth first (GET /api/users)"
+          - "Test parameter manipulation (?id=1 → ?id=2) for IDOR"
+          - "Test mass assignment by sending role=admin in POST/PUT bodies"
+          - "Test rate limiting with rapid repeats"
+        collect:
+          - prompt: "IDOR endpoints found"
+            kind: text
+            store: idor_endpoints
+          - prompt: "Mass assignment endpoints found"
+            kind: text
+            store: mass_assign_endpoints
+          - prompt: "Missing auth endpoints found"
+            kind: text
+            store: no_auth_endpoints
+        training: { lesson: bb/stage4/postman.md }
+
+      - id: bb.stage4.manual_xss
+        name: "Manual XSS verification (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: [browser]
+        why: >
+          Verify reflected, stored, and DOM XSS by hand. Scanner
+          findings need manual proof: is the payload actually
+          executing in a browser context?
+        prompts:
+          - "For each input field that reflects user input: enter <script>alert(1)</script>"
+          - "If sanitised, try <img src=x onerror=alert(1)>"
+          - "For DOM XSS, check page source for input in JS contexts"
+          - "Screenshot the alert box as evidence"
+        collect:
+          - prompt: "Vulnerable URL/parameter + payload that triggered"
+            kind: text
+            store: xss_pocs
+          - prompt: "Upload screenshot showing alert"
+            kind: file
+            target: evidence/xss/
+        training: { lesson: bb/stage4/manual_xss.md }
+
+      - id: bb.stage4.business_logic
+        name: "Business logic & workflow testing (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: []
+        why: >
+          Business-logic flaws are application-specific and invisible
+          to scanners. Price/quantity manipulation, step-skipping,
+          IDOR by ID enumeration, race conditions on coupon redemption.
+        prompts:
+          - "Add item to cart, intercept request, modify price to 0 or negative"
+          - "Skip steps in multi-step workflows by URL"
+          - "Enumerate IDs in /profile?id=, /document?file_id="
+          - "Send concurrent requests to coupon redemption endpoint"
+        collect:
+          - prompt: "Business logic flaws found"
+            kind: text
+            store: bizlogic_findings
+        training: { lesson: bb/stage4/business_logic.md }
+
+  # ───────────────────────────────────────────────
+  # STAGE 5 — Reporting
+  # ───────────────────────────────────────────────
+  - id: stage5
+    name: "Report Compilation & Delivery"
+    objective: >
+      Compile all confirmed findings into a submission-ready vulnerability
+      report (Part E1 / E2 structure from the procedure doc).
+    steps:
+      - id: bb.stage5.build_report
+        name: "Build full HTML + PDF report"
+        mode: auto
+        runtime: either
+        requires: []
+        why: >
+          Generates the Cover, Executive Summary, Risk Metrics,
+          per-severity findings (with all 12 fields), Remediation
+          Roadmap, Retesting Plan, and Appendices in HTML and PDF.
+        module: twisted.modules.report.builder:build
+        params: { engagement_id: "{{ engagement.id }}", formats: [html, markdown] }
+        training: { lesson: bb/stage5/report_build.md }
+
+      - id: bb.stage5.export_findings
+        name: "Export findings spreadsheet (XLSX + CSV)"
+        mode: auto
+        runtime: either
+        requires: []
+        why: >
+          Provides the client's vulnerability management system with
+          a structured export of every finding for ingestion.
+        module: twisted.modules.report.spreadsheet:export
+        params: { engagement_id: "{{ engagement.id }}" }
+        training: { lesson: bb/stage5/export_findings.md }
+
+      - id: bb.stage5.exec_summary_walkthrough
+        name: "Executive summary review (walkthrough)"
+        mode: walkthrough
+        runtime: either
+        requires: []
+        why: >
+          The auto-generated exec summary is a starting point. The
+          tester reviews/edits to ensure it lands for executives
+          rather than engineers.
+        prompts:
+          - "Open the generated executive_summary.md"
+          - "Rewrite the opening paragraph in plain English"
+          - "Verify the top-3 findings are described without jargon"
+          - "Confirm the immediate-actions paragraph has 3 concrete actions"
+        collect:
+          - prompt: "Final executive summary"
+            kind: text
+            store: exec_summary_final
+        training: { lesson: bb/stage5/exec_summary.md }
