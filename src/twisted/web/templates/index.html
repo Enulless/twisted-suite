@@ -13,11 +13,11 @@
       {% for e in engagements %}
       <tr>
         <td>{{ e.id }}</td>
-        <td><a href="/engagements/{{ e.id }}">{{ e.client }}</a></td>
+        <td><a href="/dashboard/engagements/{{ e.id }}">{{ e.client }}</a></td>
         <td>{{ e.primary_domain or '—' }}</td>
         <td><span class="status status-{{ e.status }}">{{ e.status }}</span></td>
         <td>{{ e.created_at[:10] }}</td>
-        <td><a href="/engagements/{{ e.id }}/findings">findings</a> · <a href="/engagements/{{ e.id }}/assets">assets</a></td>
+        <td><a href="/dashboard/engagements/{{ e.id }}/findings">findings</a> · <a href="/dashboard/engagements/{{ e.id }}/assets">assets</a></td>
       </tr>
       {% else %}
       <tr><td colspan="6" class="muted">No engagements yet. Use <code>twisted engagement new</code>.</td></tr>

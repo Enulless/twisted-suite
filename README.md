@@ -10,7 +10,7 @@ Cross-host pen-testing automation + training suite. A FastAPI engine and SQLite 
 2. **WordPress stress testing** — 4 phases (baseline → escalating concurrency → endpoint isolation → remediation diff)
 3. **WiFi pentest** — 4 phases (pre-flight → enumeration → handshake/WPS attacks → post-exploitation)
 
-> **Status:** Phases 1‑4 complete (foundations + all three procedures). Phase 5 (web dashboard) is the current build target. See [`docs/PHASE1_COMPLETION.md`](docs/PHASE1_COMPLETION.md) and the project plan for full scope.
+> **Status:** Phases 1‑5 complete (foundations + all three procedures + web dashboard). Phase 6 (training mode) is the current build target. See [`docs/PHASE1_COMPLETION.md`](docs/PHASE1_COMPLETION.md), [`docs/PHASE5_COMPLETION.md`](docs/PHASE5_COMPLETION.md), and the project plan for full scope.
 
 ## Architecture at a glance
 
@@ -49,7 +49,7 @@ twisted import-ovh
 twisted engagement list
 ```
 
-The engine binds to `127.0.0.1:8000`. WSL2 auto-forwards localhost to the Windows host, so a Chrome/Edge tab pointed at `http://localhost:8000` will reach it from Windows once the dashboard ships in Phase 5.
+The engine binds to `127.0.0.1:8000`. WSL2 auto-forwards localhost to the Windows host, so a Chrome/Edge tab pointed at `http://localhost:8000` reaches the dashboard from Windows. The token is auto-filled on the login page when the dashboard runs on the same host as the engine — usually a single click.
 
 ## Quick start (Windows worker)
 

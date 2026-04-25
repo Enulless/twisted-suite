@@ -3,8 +3,8 @@
 {% block content %}
 <section>
   <p class="muted">
-    <a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> ·
-    <a href="/engagements/{{ engagement.id }}/findings">all findings</a>
+    <a href="/dashboard/engagements/{{ engagement.id }}">{{ engagement.client }}</a> ·
+    <a href="/dashboard/engagements/{{ engagement.id }}/findings">all findings</a>
   </p>
   <h2>#{{ finding.id }} {{ finding.title }}</h2>
   <p>
@@ -19,7 +19,7 @@
   {% endif %}
 
   <h3>CVSS Calculator</h3>
-  <form id="cvss-form" hx-post="/engagements/{{ engagement.id }}/findings/{{ finding.id }}/cvss"
+  <form id="cvss-form" hx-post="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}/cvss"
         hx-target="#cvss-result" hx-swap="innerHTML">
     <fieldset>
       <legend>Base metrics</legend>

@@ -2,7 +2,7 @@
 {% block title %}{{ engagement.client }} — Master Spreadsheet{% endblock %}
 {% block content %}
 <section>
-  <h2><a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Master Spreadsheet</h2>
+  <h2><a href="/dashboard/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Master Spreadsheet</h2>
   <p class="muted">
     {{ assets|length }} asset(s) ·
     {{ assets|selectattr('in_scope')|list|length }} in scope

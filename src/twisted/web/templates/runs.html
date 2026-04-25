@@ -2,7 +2,7 @@
 {% block title %}{{ engagement.client }} — Step Runs{% endblock %}
 {% block content %}
 <section>
-  <h2><a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Step runs ({{ runs|length }})</h2>
+  <h2><a href="/dashboard/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Step runs ({{ runs|length }})</h2>
   <table>
     <thead>
       <tr><th>ID</th><th>Step</th><th>Stage</th><th>Mode</th><th>Status</th><th>Worker</th><th>Summary</th></tr>

@@ -2,14 +2,14 @@
 {% block title %}{{ engagement.client }} — Findings{% endblock %}
 {% block content %}
 <section>
-  <h2><a href="/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Findings ({{ findings|length }})</h2>
+  <h2><a href="/dashboard/engagements/{{ engagement.id }}">{{ engagement.client }}</a> · Findings ({{ findings|length }})</h2>
   <div class="kanban">
     {% for column in ['critical', 'high', 'medium', 'low', 'info'] %}
     <div class="kanban-column">
       <h3 class="sev-{{ column }}">{{ column|title }} ({{ buckets.get(column, [])|length }})</h3>
       {% for f in buckets.get(column, []) %}
       <div class="card sev-{{ column }}">
-        <a href="/engagements/{{ engagement.id }}/findings/{{ f.id }}">{{ f.title }}</a>
+        <a href="/dashboard/engagements/{{ engagement.id }}/findings/{{ f.id }}">{{ f.title }}</a>
         <p class="muted">
           {{ f.cwe or '' }}
           {% if f.cvss_score is not none %} · CVSS {{ '%.1f' % f.cvss_score }}{% endif %}

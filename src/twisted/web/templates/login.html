@@ -1,0 +1,29 @@
+{% extends "_base.html" %}
+{% block title %}Login — Twisted{% endblock %}
+{% block content %}
+<div class="login-shell">
+  <h2>Twisted Pen Testing Suite</h2>
+  {% if error %}
+  <div class="flash-error">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/login">
+    {% if next %}
+    <input type="hidden" name="next" value="{{ next }}">
+    {% endif %}
+    <label>
+      Engine bearer token
+      <input type="password" name="token" value="{{ prefilled_token or '' }}"
+             autocomplete="off" autofocus required>
+    </label>
+    <button type="submit">Login</button>
+    <p class="hint">
+      The token is generated on first <code>twisted serve</code> and stored at
+      <code>~/.twisted/worker.token</code>.
+      {% if prefilled_token %}
+      It was auto-filled from that file because the dashboard is running on the
+      same host as the engine — you can just click <strong>Login</strong>.
+      {% endif %}
+    </p>
+  </form>
+</div>
+{% endblock %}
