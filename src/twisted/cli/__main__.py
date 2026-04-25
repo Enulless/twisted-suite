@@ -323,6 +323,74 @@ def finding_list(ctx: typer.Context, engagement: str = typer.Option(..., "--enga
     console.print(t)
 
 
+# ──────────────────────────── finalize ────────────────────────────
+
+
+fin_app = typer.Typer(help="Finalize: promote artifacts to OneDrive archive")
+app.add_typer(fin_app, name="finalize")
+
+
+@fin_app.command("status")
+def finalize_status(ctx: typer.Context,
+                    engagement: str = typer.Option(..., "--engagement", "-e")) -> None:
+    """Show whether the cold archive is configured for an engagement."""
+    eng_id = _resolve_engagement(ctx, engagement)
+    with _client(ctx) as c:
+        out = c.get(f"/engagements/{eng_id}/archive-status")
+    if not out["configured"]:
+        rprint("[yellow]archive_root is not configured[/]"
+               " (set TWISTED_ARCHIVE_ROOT to enable finalize).")
+        return
+    rprint("[bold green]Archive configured.[/]")
+    rprint(f"  root:     {out['archive_root']}")
+    rprint(f"  reports:  {out['reports_dir']}")
+    rprint(f"  evidence: {out['evidence_dir']}")
+
+
+@fin_app.command("finding")
+def finalize_finding_cmd(
+    ctx: typer.Context,
+    finding_id: int = typer.Argument(...),
+    engagement: str = typer.Option(..., "--engagement", "-e"),
+) -> None:
+    """Promote a finding's evidence to the cold archive and mark the
+    finding as REPORTED."""
+    eng_id = _resolve_engagement(ctx, engagement)
+    with _client(ctx) as c:
+        out = c.post(
+            f"/engagements/{eng_id}/findings/{finding_id}/finalize",
+        )
+    if not out["success"]:
+        rprint(f"[red]✗ finalize failed:[/] {out.get('error')}")
+        raise typer.Exit(1)
+    rprint(f"[bold green]✓ finalized finding #{finding_id}[/]")
+    for p in out.get("archived_paths", []):
+        rprint(f"  archived: {p}")
+    for p in out.get("skipped", []):
+        rprint(f"  [dim]skipped:  {p}[/]")
+
+
+@fin_app.command("report")
+def finalize_report_cmd(
+    ctx: typer.Context,
+    engagement: str = typer.Option(..., "--engagement", "-e"),
+    paths: list[str] = typer.Argument(..., help="Report file paths to archive"),
+) -> None:
+    """Copy report files into the engagement's cold archive."""
+    eng_id = _resolve_engagement(ctx, engagement)
+    with _client(ctx) as c:
+        out = c.post(
+            f"/engagements/{eng_id}/finalize-report",
+            json={"paths": paths},
+        )
+    if not out["success"]:
+        rprint(f"[red]✗ finalize-report failed:[/] {out.get('error')}")
+        raise typer.Exit(1)
+    rprint(f"[bold green]✓ archived {len(out['archived_paths'])} file(s)[/]")
+    for p in out["archived_paths"]:
+        rprint(f"  → {p}")
+
+
 # ──────────────────────────── token ────────────────────────────
 
 
@@ -357,10 +425,11 @@ def token_verify(ctx: typer.Context) -> None:
             raise typer.Exit(1) from e
 
 
-from . import import_ovh, training  # noqa: E402
+from . import import_ovh, labs, training  # noqa: E402
 
 import_ovh.attach(app)
 training.attach(app)
+labs.attach(app)
 
 
 if __name__ == "__main__":

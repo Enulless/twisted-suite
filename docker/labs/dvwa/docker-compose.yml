@@ -1,0 +1,23 @@
+services:
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    restart: "no"
+    ports:
+      - "${DVWA_PORT:-18081}:80"
+    networks:
+      - lab_isolated
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -m 3 http://127.0.0.1/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+# Isolated network so the lab can never reach an out-of-scope target on
+# the host LAN. The internal=true flag prevents NAT to the wider
+# internet; remove it if you genuinely need the lab to reach external
+# services (e.g. Wappalyzer fingerprinting calls).
+networks:
+  lab_isolated:
+    driver: bridge
+    internal: false

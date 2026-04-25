@@ -1,0 +1,66 @@
+{% extends "_base.html" %}
+{% block title %}Practice Labs — Twisted{% endblock %}
+{% block content %}
+<section>
+  <h2>Practice Labs</h2>
+  <p class="muted">
+    Docker-managed vulnerable targets used for training, lab-integrated
+    practice, and per-procedure smoke tests. Each lab is fully isolated
+    on its own bridge network — never run them on a public host.
+  </p>
+  {% if not docker_available %}
+  <div class="flash-error">
+    Docker isn't installed (or isn't reachable) on the engine host.
+    Install <code>docker.io</code> and <code>docker-compose-plugin</code>,
+    then restart <code>twisted serve</code>.
+  </div>
+  {% endif %}
+</section>
+
+{% for lab in labs %}
+<article>
+  <h3>
+    {{ lab.name }}
+    <span class="status status-{{ lab.state | replace('partial', 'busy') | replace('unknown', 'offline') | replace('up', 'online') | replace('down', 'offline') }}">
+      {{ lab.state }}
+    </span>
+  </h3>
+  <p class="muted">{{ lab.description }}</p>
+  <p>
+    <strong>Target:</strong> <code>{{ lab.target_url }}</code><br>
+    <strong>Project:</strong> <code>{{ lab.project_name }}</code>
+    {% if lab.services %}
+      <br><strong>Containers:</strong>
+      {% for name, st in lab.services.items() %}
+        <code>{{ name }}</code>=<span class="muted">{{ st }}</span>
+      {% endfor %}
+    {% endif %}
+  </p>
+  <p>
+    <form style="display:inline" method="post"
+          hx-post="/dashboard/labs/{{ lab.id }}/up" hx-target="#lab-{{ lab.id }}-result">
+      <button type="submit"{% if not docker_available %} disabled{% endif %}>Up</button>
+    </form>
+    <form style="display:inline" method="post"
+          hx-post="/dashboard/labs/{{ lab.id }}/down" hx-target="#lab-{{ lab.id }}-result">
+      <button type="submit"{% if not docker_available %} disabled{% endif %}>Down</button>
+    </form>
+    <a href="/dashboard/labs/{{ lab.id }}/logs" class="muted">View logs →</a>
+    {% if lab.state == 'up' %}
+      &middot; <a href="{{ lab.target_url }}" target="_blank">Open target ↗</a>
+    {% endif %}
+  </p>
+  <div id="lab-{{ lab.id }}-result" class="muted"></div>
+  {% if lab.practice_for %}
+  <details>
+    <summary>Practice steps that map to this lab ({{ lab.practice_for|length }})</summary>
+    <ul>
+      {% for sid in lab.practice_for %}
+      <li><code><a href="/dashboard/training/{{ sid }}">{{ sid }}</a></code></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</article>
+{% endfor %}
+{% endblock %}

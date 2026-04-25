@@ -15,6 +15,34 @@
   {{ lesson_html|safe }}
 </section>
 
+{% if practice_lab %}
+<section>
+  <h3>Practice on the lab</h3>
+  <p class="muted">
+    This step has a matching practice lab:
+    <strong>{{ practice_lab.name }}</strong>
+    (target: <code>{{ practice_lab.target_url }}</code>, current state:
+    <span class="status status-{{ practice_lab.state | replace('partial', 'busy') | replace('unknown', 'offline') | replace('up', 'online') | replace('down', 'offline') }}">{{ practice_lab.state }}</span>).
+  </p>
+  <p>
+    <form style="display:inline"
+          hx-post="/dashboard/training/{{ lesson.step_id }}/practice"
+          hx-target="#practice-result" hx-swap="innerHTML">
+      <input type="hidden" name="engagement_id" value="{{ practice_engagement_id or '' }}">
+      <button type="submit"{% if not practice_engagement_id %} disabled{% endif %}>
+        Run this step against the lab
+      </button>
+    </form>
+    {% if not practice_engagement_id %}
+      <span class="muted">
+        Create an engagement first to enable lab-integrated practice.
+      </span>
+    {% endif %}
+  </p>
+  <div id="practice-result"></div>
+</section>
+{% endif %}
+
 {% if quiz %}
 <section>
   <h3>Quiz: {{ quiz.title }}</h3>

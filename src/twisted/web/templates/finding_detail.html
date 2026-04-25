@@ -18,6 +18,29 @@
   <p class="muted"><code>{{ finding.cvss_vector }}</code></p>
   {% endif %}
 
+  <h3>Evidence</h3>
+  <p>
+    <a href="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}/redact">
+      Redact a screenshot →
+    </a>
+    <span class="muted">
+      Drag rectangles over PII; saves a redacted copy as a new
+      evidence row whose <code>redacted_path</code> wins during finalize.
+    </span>
+  </p>
+
+  <h3>Finalize</h3>
+  <p class="muted">
+    Promote this finding's evidence (preferring redacted versions when
+    set) to the OneDrive archive and mark the finding as REPORTED.
+    Requires <code>TWISTED_ARCHIVE_ROOT</code> to be set on the engine.
+  </p>
+  <form hx-post="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}/finalize"
+        hx-target="#finalize-result" hx-swap="innerHTML">
+    <button type="submit">Mark Final</button>
+  </form>
+  <div id="finalize-result"></div>
+
   <h3>CVSS Calculator</h3>
   <form id="cvss-form" hx-post="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}/cvss"
         hx-target="#cvss-result" hx-swap="innerHTML">

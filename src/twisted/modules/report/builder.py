@@ -14,6 +14,7 @@ from ...core.paths import to_canonical
 from ...core.reporting import (
     FindingSummary,
     ReportData,
+    render_executive_html,
     render_html,
     render_markdown,
 )
@@ -86,20 +87,47 @@ def build(ctx: ModuleContext) -> ModuleResult:
         evidence.append(EvidenceRef(path=to_canonical(p), kind="file",
                                      note="full report (html)", host=ctx.worker_host))
 
-    if "pdf" in formats:
+    if "executive" in formats or "exec" in formats:
+        exec_html = render_executive_html(data)
+        p = ctx.work_dir / f"executive_summary_{ts}.html"
+        write_artifact(p, exec_html)
+        artifacts.append(p)
+        evidence.append(EvidenceRef(path=to_canonical(p), kind="file",
+                                     note="executive one-pager (html)",
+                                     host=ctx.worker_host))
+
+    if "pdf" in formats or "executive_pdf" in formats:
         try:
             from weasyprint import HTML  # type: ignore[import-not-found]
-            html_str = render_html(data)
-            p = ctx.work_dir / f"report_{ts}.pdf"
-            HTML(string=html_str).write_pdf(str(p))
-            artifacts.append(p)
-            evidence.append(EvidenceRef(path=to_canonical(p), kind="file",
-                                         note="full report (pdf)", host=ctx.worker_host))
         except ImportError:
-            return ModuleResult(success=False,
-                                error="weasyprint not installed (pip install 'twisted-suite[report]')")
-        except Exception as e:  # noqa: BLE001
-            return ModuleResult(success=False, error=f"weasyprint failed: {e}")
+            return ModuleResult(
+                success=False,
+                error="weasyprint not installed (pip install 'twisted-suite[report]')",
+            )
+        if "pdf" in formats:
+            try:
+                html_str = render_html(data)
+                p = ctx.work_dir / f"report_{ts}.pdf"
+                HTML(string=html_str).write_pdf(str(p))
+                artifacts.append(p)
+                evidence.append(EvidenceRef(path=to_canonical(p), kind="file",
+                                             note="full report (pdf)",
+                                             host=ctx.worker_host))
+            except Exception as e:  # noqa: BLE001
+                return ModuleResult(success=False,
+                                    error=f"weasyprint full-report failed: {e}")
+        if "executive_pdf" in formats:
+            try:
+                exec_str = render_executive_html(data)
+                p = ctx.work_dir / f"executive_summary_{ts}.pdf"
+                HTML(string=exec_str).write_pdf(str(p))
+                artifacts.append(p)
+                evidence.append(EvidenceRef(path=to_canonical(p), kind="file",
+                                             note="executive one-pager (pdf)",
+                                             host=ctx.worker_host))
+            except Exception as e:  # noqa: BLE001
+                return ModuleResult(success=False,
+                                    error=f"weasyprint exec-summary failed: {e}")
 
     return ModuleResult(
         success=True,

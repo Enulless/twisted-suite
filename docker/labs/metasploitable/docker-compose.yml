@@ -1,0 +1,22 @@
+services:
+  metasploitable:
+    image: tleemcjr/metasploitable2:latest
+    restart: "no"
+    # Metasploitable2 is a full vulnerable Linux box; expose its main
+    # vulnerable services on high host ports so they don't conflict
+    # with anything on the WSL host.
+    ports:
+      - "${MS_SSH_PORT:-12222}:22"
+      - "${MS_FTP_PORT:-12121}:21"
+      - "${MS_SMB_PORT:-1445}:445"
+      - "${MS_HTTP_PORT:-18083}:80"
+      - "${MS_VNC_PORT:-15900}:5900"
+    networks:
+      - lab_isolated
+
+# Strongly isolated: Metasploitable2 is genuinely unsafe — even though
+# it's behind the bridge driver, do NOT publish it on a public IP.
+networks:
+  lab_isolated:
+    driver: bridge
+    internal: false

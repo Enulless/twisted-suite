@@ -18,8 +18,10 @@ from ..core.settings import Settings, get_settings
 from .auth import ensure_token
 from .routes import assets as assets_router
 from .routes import engagements as engagements_router
+from .routes import finalize as finalize_router
 from .routes import findings as findings_router
 from .routes import jobs as jobs_router
+from .routes import labs as labs_router
 from .routes import system as system_router
 from .routes import training as training_router
 from .routes import web as web_router
@@ -75,6 +77,8 @@ def create_app(*, settings: Settings | None = None,
     app.include_router(findings_router.router)
     app.include_router(jobs_router.router)
     app.include_router(training_router.router)
+    app.include_router(labs_router.router)
+    app.include_router(finalize_router.router)
 
     # Browser dashboard (Phase 5): Jinja2 + HTMX, cookie-auth on top of
     # the same bearer token. Static assets at /static/, login at /login,

@@ -7,6 +7,8 @@ services:
       MARIADB_USER: wordpress
       MARIADB_PASSWORD: wordpress
       MARIADB_ROOT_PASSWORD: rootpw
+    networks:
+      - lab_isolated
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -29,6 +31,8 @@ services:
       WORDPRESS_DB_PASSWORD: wordpress
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DEBUG: "1"
+    networks:
+      - lab_isolated
     healthcheck:
       # Apache returns 200 once WP is past first-boot bootstrap and 302
       # to /wp-admin/install.php. Either is fine; we just need to know
@@ -40,3 +44,9 @@ services:
       timeout: 5s
       retries: 40
       start_period: 10s
+
+# All services on a single bridge network isolated from anything else
+# the user has running on the same host.
+networks:
+  lab_isolated:
+    driver: bridge

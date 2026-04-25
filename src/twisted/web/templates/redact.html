@@ -1,0 +1,46 @@
+{% extends "_base.html" %}
+{% block title %}Redact evidence — finding #{{ finding.id }}{% endblock %}
+{% block content %}
+<section>
+  <p class="muted">
+    <a href="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}">
+      ← back to finding #{{ finding.id }}
+    </a>
+  </p>
+  <h2>Redact screenshot — {{ finding.title }}</h2>
+  <p class="muted">
+    Drag rectangles over any region containing PII (usernames, IPs,
+    session cookies, tokens, faces, credit cards, etc.). The original
+    file stays untouched on the hot side; the redacted PNG is saved as
+    a new evidence row whose <code>redacted_path</code> takes precedence
+    in the report builder and the Finalize flow.
+  </p>
+
+  {% if message %}<p class="flash-error">{{ message }}</p>{% endif %}
+
+  <form id="redact-form"
+        method="post"
+        action="/dashboard/engagements/{{ engagement.id }}/findings/{{ finding.id }}/redact"
+        enctype="multipart/form-data">
+    <fieldset>
+      <legend>Source screenshot</legend>
+      <input id="redact-file" type="file" name="image" accept="image/*" required>
+      <span id="redact-dims" class="muted"></span>
+    </fieldset>
+    <fieldset>
+      <legend>Tool</legend>
+      <button type="button" id="redact-undo">Undo last rectangle</button>
+      <button type="button" id="redact-clear">Clear all</button>
+    </fieldset>
+    <input type="hidden" id="redact-rects" name="rectangles" value="[]">
+    <p>
+      <canvas id="redact-canvas" width="800" height="100"
+              style="border:1px solid var(--border); cursor: crosshair;
+                     background: var(--bg-2);"></canvas>
+    </p>
+    <button type="submit">Redact + attach as evidence</button>
+  </form>
+</section>
+
+<script src="/static/redact.js"></script>
+{% endblock %}

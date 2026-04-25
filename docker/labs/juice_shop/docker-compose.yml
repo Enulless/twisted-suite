@@ -1,0 +1,18 @@
+services:
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    restart: "no"
+    ports:
+      - "${JUICE_PORT:-18082}:3000"
+    networks:
+      - lab_isolated
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+networks:
+  lab_isolated:
+    driver: bridge

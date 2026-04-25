@@ -12,11 +12,12 @@ tests still work) or the cookie set by ``POST /login``. See
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
 import markdown as _markdown
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -26,6 +27,25 @@ from ... import __version__
 from ...core import models as m
 from ...core.cvss import parse_vector, severity_for_score
 from ...core.db import session_scope
+from ...core.evidence import sha256_file
+from ...core.finalize import (
+    finalize_evidence_for_finding,
+)
+from ...core.finalize import (
+    now_utc as _utcnow,
+)
+from ...core.redact import Rectangle, redact_file
+from ...core.storage import EngagementPaths
+from ...labs import (
+    LAB_CATALOGUE,
+    docker_available,
+    get_lab,
+    take_lab_down,
+)
+from ...labs import lab_for_step as _lab_for_step
+from ...labs import lab_logs as run_lab_logs
+from ...labs import lab_status as get_lab_status
+from ...labs import lab_up as run_lab_up
 from ...modules.recon.risk_scoring import tier as risk_tier
 from ...training import LessonNotFound, QuizNotFound, grade
 from ..auth import read_token
@@ -37,7 +57,7 @@ from ..web_auth import (
     make_session_cookie_response,
     require_dashboard_session,
 )
-from . import training as training_routes
+from . import training as training_routes  # noqa: I001
 
 # Configured once at module import via ``configure_templates`` from
 # ``app.py`` so the same Jinja2 environment (with the package
@@ -395,6 +415,96 @@ def finding_detail_page(engagement_id: int, finding_id: int,
     )
 
 
+# ──────────────────────────── Practice labs ────────────────────────────
+
+
+def _lab_view(spec) -> dict[str, Any]:
+    st = get_lab_status(spec)
+    return {
+        "id": spec.id,
+        "name": spec.name,
+        "description": spec.description,
+        "state": st.state.value,
+        "target_url": spec.target_url,
+        "project_name": spec.project_name,
+        "services": st.services,
+        "practice_for": list(spec.practice_for),
+    }
+
+
+@router.get("/dashboard/labs", response_class=HTMLResponse,
+            dependencies=[Depends(require_dashboard_session)])
+def labs_index(request: Request) -> HTMLResponse:
+    labs = [_lab_view(spec) for spec in LAB_CATALOGUE.values()]
+    return _t().TemplateResponse(
+        request, "labs.html",
+        _ctx(request, labs=labs, docker_available=docker_available()),
+    )
+
+
+@router.post("/dashboard/labs/{lab_id}/up", response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+def dashboard_lab_up(lab_id: str) -> HTMLResponse:
+    try:
+        spec = get_lab(lab_id)
+    except KeyError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lab not found") from e
+    result = run_lab_up(spec, wait_seconds=0)
+    if not result.available:
+        return HTMLResponse(
+            f'<span class="flash-error">Docker unavailable: {result.error}</span>'
+        )
+    if result.success:
+        return HTMLResponse(
+            f'<span class="status status-online">{lab_id} brought up</span> '
+            f'(state={result.state.value if result.state else "unknown"}). '
+            f'<a href="/dashboard/labs">refresh</a>'
+        )
+    return HTMLResponse(
+        f'<span class="flash-error">{lab_id} up failed: {result.error}</span>'
+    )
+
+
+@router.post("/dashboard/labs/{lab_id}/down", response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+def dashboard_lab_down(lab_id: str) -> HTMLResponse:
+    try:
+        spec = get_lab(lab_id)
+    except KeyError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lab not found") from e
+    result = take_lab_down(spec, volumes=True)
+    if not result.available:
+        return HTMLResponse(
+            f'<span class="flash-error">Docker unavailable: {result.error}</span>'
+        )
+    if result.success:
+        return HTMLResponse(
+            f'<span class="status status-offline">{lab_id} torn down</span>. '
+            f'<a href="/dashboard/labs">refresh</a>'
+        )
+    return HTMLResponse(
+        f'<span class="flash-error">{lab_id} down failed: {result.error}</span>'
+    )
+
+
+@router.get("/dashboard/labs/{lab_id}/logs", response_class=HTMLResponse,
+            dependencies=[Depends(require_dashboard_session)])
+def dashboard_lab_logs(lab_id: str, request: Request,
+                       tail: int = 100) -> HTMLResponse:
+    try:
+        spec = get_lab(lab_id)
+    except KeyError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lab not found") from e
+    result = run_lab_logs(spec, tail=tail)
+    return _t().TemplateResponse(
+        request, "lab_logs.html",
+        _ctx(request, lab={"id": spec.id, "name": spec.name},
+             tail=tail, result={"available": result.available,
+                                "output": result.output,
+                                "error": result.error}),
+    )
+
+
 # ──────────────────────────── Training pages ────────────────────────────
 
 
@@ -445,6 +555,16 @@ def training_index(request: Request,
     )
 
 
+def _latest_engagement_id(factory) -> int | None:
+    """Pick the most recently created engagement to default the practice
+    button against. Returns None if there are no engagements."""
+    with session_scope(factory) as s:
+        eng = s.execute(
+            select(m.Engagement).order_by(m.Engagement.created_at.desc())
+        ).scalars().first()
+        return eng.id if eng else None
+
+
 @router.get("/dashboard/training/{step_id}", response_class=HTMLResponse,
             dependencies=[Depends(require_dashboard_session)])
 def training_detail(step_id: str, request: Request) -> HTMLResponse:
@@ -487,10 +607,25 @@ def training_detail(step_id: str, request: Request) -> HTMLResponse:
     lesson_html = _markdown.markdown(
         lsn.body, extensions=["fenced_code", "tables"]
     )
+    # Resolve practice-on-the-lab info if any lab advertises this step.
+    practice_lab = None
+    practice_engagement_id = None
+    spec = _lab_for_step(step_id)
+    if spec is not None:
+        st = get_lab_status(spec)
+        practice_lab = {
+            "id": spec.id, "name": spec.name, "state": st.state.value,
+            "target_url": spec.target_url,
+        }
+        practice_engagement_id = _latest_engagement_id(
+            request.app.state.engine_state.session_factory
+        )
     return _t().TemplateResponse(
         request, "training_detail.html",
         _ctx(request, lesson=lesson_view, lesson_html=lesson_html,
-             quiz=quiz_public, progress=progress, user=user),
+             quiz=quiz_public, progress=progress, user=user,
+             practice_lab=practice_lab,
+             practice_engagement_id=practice_engagement_id),
     )
 
 
@@ -577,6 +712,243 @@ def runs_page(engagement_id: int, request: Request) -> HTMLResponse:
 
 
 # ──────────────────────────── HTMX: CVSS calculator ────────────────────────────
+
+
+# ──────────────────────────── Finalize / Practice fragments ────────────────────────────
+
+
+@router.post("/dashboard/engagements/{engagement_id}/findings/{finding_id}/finalize",
+             response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+def dashboard_finalize_finding(engagement_id: int, finding_id: int,
+                               request: Request) -> HTMLResponse:
+    factory = request.app.state.engine_state.session_factory
+    settings = request.app.state.settings
+    with session_scope(factory) as s:
+        f = s.get(m.Finding, finding_id)
+        if f is None or f.engagement_id != engagement_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "finding not found")
+        eng = s.get(m.Engagement, engagement_id)
+        client_name = eng.client
+        rows = s.execute(
+            select(m.Evidence).where(m.Evidence.finding_id == finding_id)
+        ).scalars().all()
+        ev_dicts = [{"id": e.id, "path": e.path,
+                     "redacted_path": e.redacted_path} for e in rows]
+    result = finalize_evidence_for_finding(
+        client=client_name, finding_id=finding_id,
+        evidence_rows=ev_dicts, settings=settings,
+    )
+    if not result.success:
+        return HTMLResponse(
+            f'<p class="flash-error">Finalize failed: {result.error}</p>',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    with session_scope(factory) as s:
+        now = _utcnow()
+        for ev in s.execute(
+            select(m.Evidence).where(m.Evidence.finding_id == finding_id)
+        ).scalars().all():
+            ev.finalized_at = now
+        f = s.get(m.Finding, finding_id)
+        if f is not None:
+            f.finalized_at = now
+            f.status = m.FindingStatus.REPORTED
+    parts = [
+        f'<p><span class="status status-done">Marked final</span> — '
+        f'finding #{finding_id} status set to REPORTED.</p>'
+    ]
+    if result.archived_paths:
+        parts.append("<ul>")
+        for p in result.archived_paths:
+            parts.append(f'<li>archived: <code>{p}</code></li>')
+        parts.append("</ul>")
+    if result.skipped:
+        parts.append("<p class='muted'>Skipped (file missing on disk):</p><ul>")
+        for p in result.skipped:
+            parts.append(f'<li><code>{p}</code></li>')
+        parts.append("</ul>")
+    return HTMLResponse("".join(parts))
+
+
+@router.post("/dashboard/training/{step_id}/practice",
+             response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+async def dashboard_practice_step(step_id: str, request: Request) -> HTMLResponse:
+    """Queue ``step_id`` against the lab that advertises it, for the
+    engagement supplied via the form's hidden ``engagement_id`` field.
+
+    Brings the lab up if it isn't running, then POSTs /steps/run with
+    a host param pointing at the lab's target URL host.
+    """
+    spec = _lab_for_step(step_id)
+    if spec is None:
+        return HTMLResponse(
+            '<p class="flash-error">No practice lab is configured for this step.</p>',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    form = await request.form()
+    raw_eng = form.get("engagement_id") or ""
+    try:
+        engagement_id = int(raw_eng)
+    except (TypeError, ValueError):
+        return HTMLResponse(
+            '<p class="flash-error">Pick an engagement first.</p>',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Ensure lab is up; bring it up if not.
+    status_now = get_lab_status(spec).state.value
+    bring_up_msg = ""
+    if status_now != "up":
+        if not docker_available():
+            return HTMLResponse(
+                '<p class="flash-error">Docker is not available on the engine '
+                'host; cannot bring the lab up.</p>',
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        result = run_lab_up(spec, wait_seconds=60)
+        if not result.success:
+            return HTMLResponse(
+                f'<p class="flash-error">Lab failed to start: {result.error}</p>',
+                status_code=status.HTTP_502_BAD_GATEWAY,
+            )
+        bring_up_msg = f"<p>Brought <strong>{spec.id}</strong> up.</p>"
+
+    # Queue a step run against the lab's target host.
+    procs = request.app.state.engine_state.procedures
+    try:
+        step = procs.step(step_id)
+    except KeyError:
+        return HTMLResponse(
+            f'<p class="flash-error">Step {step_id} is not in any '
+            'loaded procedure.</p>',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    factory = request.app.state.engine_state.session_factory
+    target_host = spec.target_url.replace("http://", "").rstrip("/")
+    with session_scope(factory) as s:
+        eng = s.get(m.Engagement, engagement_id)
+        if eng is None:
+            return HTMLResponse(
+                '<p class="flash-error">Engagement not found.</p>',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        sr = m.StepRun(
+            engagement_id=eng.id, procedure=step.procedure, stage=step.stage,
+            step_id=step.id, mode=m.StepMode(step.mode),
+            status=m.StepStatus.PENDING,
+            params={"host": target_host, "url": spec.target_url,
+                    "hosts": [target_host]},
+        )
+        sr.job = m.Job(runtime=m.JobRuntime(step.runtime),
+                       requires=list(step.requires or []),
+                       state=m.JobState.PENDING)
+        s.add(sr)
+        s.flush()
+        run_id = sr.id
+
+    parts = [bring_up_msg, (
+        f'<p><span class="status status-online">Queued</span> '
+        f'<code>{step_id}</code> against <code>{spec.target_url}</code> '
+        f'as run <a href="/dashboard/engagements/{engagement_id}/runs">'
+        f'#{run_id}</a>.</p>'
+    )]
+    return HTMLResponse("".join(parts))
+
+
+# ──────────────────────────── PII redaction ────────────────────────────
+
+
+@router.get("/dashboard/engagements/{engagement_id}/findings/{finding_id}/redact",
+            response_class=HTMLResponse,
+            dependencies=[Depends(require_dashboard_session)])
+def redact_form(engagement_id: int, finding_id: int,
+                request: Request) -> HTMLResponse:
+    factory = request.app.state.engine_state.session_factory
+    with session_scope(factory) as s:
+        f = s.get(m.Finding, finding_id)
+        if f is None or f.engagement_id != engagement_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "finding not found")
+        eng = s.get(m.Engagement, engagement_id)
+        engagement = _serialise_engagement(eng)
+        finding = _serialise_finding(f)
+    return _t().TemplateResponse(
+        request, "redact.html",
+        _ctx(request, engagement=engagement, finding=finding, message=None),
+    )
+
+
+@router.post("/dashboard/engagements/{engagement_id}/findings/{finding_id}/redact",
+             response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+async def redact_submit(engagement_id: int, finding_id: int,
+                        request: Request,
+                        image: UploadFile = File(...),
+                        rectangles: str = Form("[]")) -> Any:
+    factory = request.app.state.engine_state.session_factory
+    settings = request.app.state.settings
+    with session_scope(factory) as s:
+        f = s.get(m.Finding, finding_id)
+        if f is None or f.engagement_id != engagement_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "finding not found")
+        eng = s.get(m.Engagement, engagement_id)
+        client_name = eng.client
+
+    try:
+        rect_list = json.loads(rectangles or "[]")
+        if not isinstance(rect_list, list):
+            raise ValueError("rectangles must be a JSON array")
+        rects = [Rectangle.from_dict(r) for r in rect_list]
+    except (ValueError, TypeError) as e:
+        return _t().TemplateResponse(
+            request, "redact.html",
+            _ctx(request,
+                 engagement=_serialise_engagement(eng),
+                 finding=_serialise_finding(f),
+                 message=f"Invalid rectangles payload: {e}"),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Save the original to evidence/raw/, then write a redacted sibling.
+    paths = EngagementPaths.for_engagement(client_name, settings).ensure()
+    payload = await image.read()
+    if not payload:
+        return _t().TemplateResponse(
+            request, "redact.html",
+            _ctx(request,
+                 engagement=_serialise_engagement(eng),
+                 finding=_serialise_finding(f),
+                 message="Empty file."),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    src_name = (image.filename or "screenshot.png").rsplit("/", 1)[-1]
+    src_path = paths.evidence_raw / f"finding{finding_id}_{ts}_{src_name}"
+    src_path.write_bytes(payload)
+    redacted_path = src_path.parent / f"redacted_{src_path.name}"
+    if not redacted_path.suffix.lower().endswith(("png", ".jpg", ".jpeg")):
+        redacted_path = redacted_path.with_suffix(".png")
+    result = redact_file(src_path, redacted_path, rects)
+
+    # Attach as a new evidence row.
+    sha_orig = sha256_file(src_path)
+    with session_scope(factory) as s:
+        ev = m.Evidence(
+            engagement_id=engagement_id, finding_id=finding_id,
+            kind=m.EvidenceKind.SCREENSHOT,
+            path=str(src_path), redacted_path=str(result.redacted_path),
+            sha256=result.sha256, size_bytes=result.redacted_path.stat().st_size,
+            host="wsl",
+            note=(f"redacted via dashboard ({result.rectangles_applied} "
+                  f"rectangles), original sha256={sha_orig[:12]}"),
+        )
+        s.add(ev)
+
+    return RedirectResponse(
+        url=f"/dashboard/engagements/{engagement_id}/findings/{finding_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/dashboard/engagements/{engagement_id}/findings/{finding_id}/cvss",

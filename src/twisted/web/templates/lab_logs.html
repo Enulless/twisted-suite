@@ -1,0 +1,14 @@
+{% extends "_base.html" %}
+{% block title %}{{ lab.id }} logs — Twisted{% endblock %}
+{% block content %}
+<section>
+  <p class="muted">
+    <a href="/dashboard/labs">all labs</a>
+  </p>
+  <h2>{{ lab.name }} — logs (last {{ tail }} lines)</h2>
+  {% if not result.available %}
+  <div class="flash-error">{{ result.error or "Docker not available." }}</div>
+  {% endif %}
+  <pre>{{ result.output or '(no output)' }}</pre>
+</section>
+{% endblock %}
