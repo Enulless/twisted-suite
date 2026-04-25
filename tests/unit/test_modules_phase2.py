@@ -183,6 +183,32 @@ class TestNikto:
             r = nikto_scan.run(_ctx(tmp_path, hosts=["acme.example"]))
         assert not r.success
 
+    def test_max_time_appends_nikto_maxtime_flag(self, tmp_path: Path) -> None:
+        """Regression: when ``max_time`` is set, it must be passed to
+        nikto's own ``-maxtime`` flag so nikto self-terminates and
+        flushes its ``-output`` file. Without this, a subprocess timeout
+        SIGKILLs nikto mid-scan and the buffered output is lost."""
+        from twisted.core.runner import CommandResult
+
+        captured: dict = {}
+
+        def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+            captured["cmd"] = cmd
+            captured["timeout"] = kwargs.get("timeout")
+            return CommandResult(cmd=cmd, returncode=0, stdout="", stderr="",
+                                 duration_ms=0)
+
+        with patch.object(nikto_scan, "tool_available", return_value=True), \
+             patch.object(nikto_scan, "run_cmd", side_effect=_fake_run):
+            nikto_scan.run(_ctx(tmp_path, hosts=["acme.example"], max_time=120))
+
+        cmd = captured["cmd"]
+        assert "-maxtime" in cmd
+        assert "120s" in cmd
+        # The subprocess timeout should be generously larger than nikto's
+        # own self-terminate budget so it only fires as a safety net.
+        assert captured["timeout"] >= 120 + 60
+
 
 # ──────────────────────────── nvd_lookup ────────────────────────────
 

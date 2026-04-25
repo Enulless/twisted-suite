@@ -1,0 +1,42 @@
+services:
+  db:
+    image: mariadb:11
+    restart: "no"
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_ROOT_PASSWORD: rootpw
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    tmpfs:
+      - /var/lib/mysql
+
+  wordpress:
+    image: wordpress:latest
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WP_PORT:-18080}:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: "1"
+    healthcheck:
+      # Apache returns 200 once WP is past first-boot bootstrap and 302
+      # to /wp-admin/install.php. Either is fine; we just need to know
+      # the container is serving HTTP.
+      test:
+        ["CMD-SHELL",
+         "curl -fsS -o /dev/null -m 3 http://127.0.0.1/ || curl -fsS -o /dev/null -m 3 http://127.0.0.1/wp-admin/install.php"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s

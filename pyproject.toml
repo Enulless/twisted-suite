@@ -58,6 +58,8 @@ addopts = "-ra --strict-markers -m 'not network'"
 markers = [
     "integration: end-to-end tests that boot the engine and a worker",
     "network: tests that hit the real internet (skipped by default)",
+    "slow: tests that take more than ~1 minute (deselect with -k 'not slow')",
+    "docker: tests that require a working Docker daemon",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

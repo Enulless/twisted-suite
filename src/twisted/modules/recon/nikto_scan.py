@@ -74,7 +74,17 @@ def run(ctx: ModuleContext) -> ModuleResult:
     if not hosts:
         return ModuleResult(success=False, error="all hosts dropped by scope")
 
-    timeout = int(ctx.params.get("timeout", 300))
+    # `max_time` (seconds) is passed to nikto's own `-maxtime` flag so
+    # nikto self-terminates gracefully and writes its `-output` file
+    # before exiting. Without this, a subprocess timeout SIGKILLs nikto
+    # mid-scan and the buffered output file ends up empty — losing
+    # every check that ran. The subprocess `timeout` is set generously
+    # above max_time so it only fires as a safety net.
+    max_time = ctx.params.get("max_time")
+    if max_time is not None:
+        max_time = int(max_time)
+    default_timeout = (max_time + 60) if max_time else 300
+    timeout = int(ctx.params.get("timeout", default_timeout))
     ts = ctx.timestamp.strftime("%Y%m%d_%H%M%S")
     artifacts: list = []
     findings: list[FindingDraft] = []
@@ -83,6 +93,8 @@ def run(ctx: ModuleContext) -> ModuleResult:
     for host in hosts:
         out_path = ctx.work_dir / f"nikto_{host.replace('.', '_')}_{ts}.txt"
         cmd = ["nikto", "-host", f"https://{host}", "-output", str(out_path)]
+        if max_time is not None:
+            cmd += ["-maxtime", f"{max_time}s"]
         r = run_cmd(cmd, timeout=timeout)
         artifacts.append(out_path)
         text = out_path.read_text() if out_path.exists() else r.stdout
