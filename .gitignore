@@ -14,3 +14,7 @@ logs/
 .DS_Store
 .mypy_cache/
 .ruff_cache/
+# SPA front-end artifacts (built fresh by CI)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

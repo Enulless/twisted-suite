@@ -14,14 +14,23 @@ import httpx
 from ..core.settings import Settings, get_settings
 from ..engine.auth import read_token
 
+API_PREFIX = "/api"
+
 
 class EngineClient:
-    """Tiny HTTP client. Constructs Authorization headers and parses JSON."""
+    """Tiny HTTP client. Constructs Authorization headers and parses JSON.
+
+    Base URL automatically includes the ``/api`` prefix so callers pass
+    bare paths like ``/engagements`` and the client requests
+    ``http://host:8000/api/engagements``. The ``/health`` open endpoint
+    is the one exception (also under ``/api``)."""
 
     def __init__(self, base_url: str | None = None, token: str | None = None,
                  *, settings: Settings | None = None, timeout: float = 30.0):
         s = settings or get_settings()
-        self._base = (base_url or s.engine_url).rstrip("/")
+        root = (base_url or s.engine_url).rstrip("/")
+        self._root = root
+        self._base = root + API_PREFIX
         self._token = token or read_token(s) or ""
         self._client = httpx.Client(base_url=self._base, timeout=timeout,
                                     headers=self._auth_headers())

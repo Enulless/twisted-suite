@@ -30,7 +30,8 @@ def api(tmp_path: Path,
     reset_settings(s)
     app = create_app(settings=s)
     token = ensure_token(s)
-    client = TestClient(app, follow_redirects=False)
+    from tests.conftest import ApiClient
+    client = ApiClient(TestClient(app, follow_redirects=False))
     try:
         yield client, token, archive
     finally:
@@ -154,7 +155,8 @@ def test_archive_status_when_unset(tmp_path: Path,
     reset_settings(s)
     app = create_app(settings=s)
     token = ensure_token(s)
-    c = TestClient(app)
+    from tests.conftest import ApiClient
+    c = ApiClient(TestClient(app))
     # Need an engagement
     r = c.post("/engagements", json={"client": "X"}, headers=_hdrs(token))
     eng_id = r.json()["id"]

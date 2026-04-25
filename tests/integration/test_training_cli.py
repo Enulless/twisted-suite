@@ -49,8 +49,9 @@ def cli_env(tmp_path: Path,
     deadline = time.time() + 5
     while time.time() < deadline and not server.started:
         time.sleep(0.05)
-    base_url = f"http://127.0.0.1:{port}"
-    monkeypatch.setenv("TWISTED_ENGINE_URL", base_url)
+    engine_root = f"http://127.0.0.1:{port}"
+    base_url = f"{engine_root}/api"
+    monkeypatch.setenv("TWISTED_ENGINE_URL", engine_root)
     monkeypatch.setenv("TWISTED_TOKEN", token)
     httpx.get(f"{base_url}/health", timeout=2).raise_for_status()
     try:

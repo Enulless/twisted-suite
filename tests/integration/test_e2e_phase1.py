@@ -71,8 +71,9 @@ def live_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         time.sleep(0.05)
     if not server.started:
         pytest.fail("uvicorn failed to start")
-    base = f"http://127.0.0.1:{port}"
-    monkeypatch.setenv("TWISTED_ENGINE_URL", base)
+    engine_root = f"http://127.0.0.1:{port}"
+    base = f"{engine_root}/api"
+    monkeypatch.setenv("TWISTED_ENGINE_URL", engine_root)
     monkeypatch.setenv("TWISTED_TOKEN", token)
     try:
         yield base, token, s

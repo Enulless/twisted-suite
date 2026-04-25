@@ -36,7 +36,8 @@ def api(tmp_path: Path,
     reset_settings(s)
     app = create_app(settings=s)
     token = ensure_token(s)
-    client = TestClient(app)
+    from tests.conftest import ApiClient
+    client = ApiClient(TestClient(app))
     try:
         yield client, token
     finally:

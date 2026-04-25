@@ -23,6 +23,7 @@ from .routes import findings as findings_router
 from .routes import jobs as jobs_router
 from .routes import labs as labs_router
 from .routes import system as system_router
+from .routes import tool_policy as tool_policy_router
 from .routes import training as training_router
 from .routes import web as web_router
 from .routes import workers as workers_router
@@ -33,6 +34,22 @@ def _web_paths() -> tuple[Path, Path]:
     """Resolve template + static directories from the installed package."""
     web_root = Path(str(resources.files("twisted.web")))
     return web_root / "templates", web_root / "static"
+
+
+def _spa_dist_dir() -> Path | None:
+    """Locate the built SPA bundle.
+
+    Searches the conventional ``frontend/dist`` next to the project
+    root. Returns ``None`` if the SPA hasn't been built yet — in that
+    case the legacy ``/dashboard/*`` Jinja templates remain the user
+    interface (Phase 8C deletes them once the SPA is the default).
+    """
+    # ``app.py`` lives at src/twisted/engine/app.py — go up four levels
+    # to reach the repo root, then look for frontend/dist.
+    here = Path(__file__).resolve()
+    repo_root = here.parents[3]
+    candidate = repo_root / "frontend" / "dist"
+    return candidate if candidate.is_file() or candidate.is_dir() else None
 
 
 def _build_state(settings: Settings,
@@ -70,15 +87,19 @@ def create_app(*, settings: Settings | None = None,
     app.state.engine_state = state
     app.state.settings = s
 
-    app.include_router(system_router.router)
-    app.include_router(workers_router.router)
-    app.include_router(engagements_router.router)
-    app.include_router(assets_router.router)
-    app.include_router(findings_router.router)
-    app.include_router(jobs_router.router)
-    app.include_router(training_router.router)
-    app.include_router(labs_router.router)
-    app.include_router(finalize_router.router)
+    # JSON API mounted under /api/* so the SPA can own bare paths
+    # (/, /engagements/:id, /workers, ...) without shadowing JSON routes.
+    api_prefix = "/api"
+    app.include_router(system_router.router, prefix=api_prefix)
+    app.include_router(workers_router.router, prefix=api_prefix)
+    app.include_router(engagements_router.router, prefix=api_prefix)
+    app.include_router(assets_router.router, prefix=api_prefix)
+    app.include_router(findings_router.router, prefix=api_prefix)
+    app.include_router(jobs_router.router, prefix=api_prefix)
+    app.include_router(training_router.router, prefix=api_prefix)
+    app.include_router(labs_router.router, prefix=api_prefix)
+    app.include_router(finalize_router.router, prefix=api_prefix)
+    app.include_router(tool_policy_router.router, prefix=api_prefix)
 
     # Browser dashboard (Phase 5): Jinja2 + HTMX, cookie-auth on top of
     # the same bearer token. Static assets at /static/, login at /login,
@@ -91,5 +112,23 @@ def create_app(*, settings: Settings | None = None,
         app.include_router(web_router.router)
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Phase 8: serve the Vite SPA from frontend/dist when present.
+    # Mounting last so the JSON API (/api/*), legacy dashboard
+    # (/dashboard/*), /login, /logout, and /static all win over the
+    # SPA's catch-all. The SPA owns /, /engagements/:id, /workers,
+    # /labs, /training, /procedures (root-level, not /dashboard/*).
+    spa_dist = _spa_dist_dir()
+    if spa_dist and spa_dist.is_dir():
+        # html=True makes StaticFiles fall back to index.html for any
+        # unknown path, which is exactly what a client-side router needs.
+        app.mount("/", StaticFiles(directory=str(spa_dist), html=True),
+                  name="spa")
+    else:
+        # No SPA built — root URL redirects to the legacy /dashboard/.
+        from fastapi.responses import RedirectResponse
+        @app.get("/", include_in_schema=False)
+        def _root_redirect() -> RedirectResponse:
+            return web_router.make_root_redirect_to_dashboard()
 
     return app

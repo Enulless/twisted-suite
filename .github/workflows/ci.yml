@@ -51,6 +51,33 @@ jobs:
       - name: Unit + integration tests (mocked, no network)
         run: pytest -q
 
+  frontend:
+    name: SPA build + vitest
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check + Vite build
+        run: npm run build
+
+      - name: Vitest (component + unit tests)
+        run: npm run test
+
   smoke-network:
     name: live-target smoke tests
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

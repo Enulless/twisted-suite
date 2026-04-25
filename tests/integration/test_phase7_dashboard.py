@@ -37,7 +37,8 @@ def dash(tmp_path: Path,
     reset_settings(s)
     app = create_app(settings=s)
     token = ensure_token(s)
-    client = TestClient(app, follow_redirects=False)
+    from tests.conftest import ApiClient
+    client = ApiClient(TestClient(app, follow_redirects=False))
     try:
         yield client, token, tmp_path
     finally:

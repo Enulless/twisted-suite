@@ -65,8 +65,9 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[s
     port = _free_port()
     server = _UvicornInThread(app, "127.0.0.1", port)
     server.start()
-    base_url = f"http://127.0.0.1:{port}"
-    monkeypatch.setenv("TWISTED_ENGINE_URL", base_url)
+    engine_root = f"http://127.0.0.1:{port}"
+    base_url = f"{engine_root}/api"
+    monkeypatch.setenv("TWISTED_ENGINE_URL", engine_root)
     monkeypatch.setenv("TWISTED_TOKEN", token)
     try:
         # Quick sanity smoke

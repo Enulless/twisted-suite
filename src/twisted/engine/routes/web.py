@@ -1,4 +1,18 @@
-"""HTML dashboard router.
+"""Legacy HTML dashboard router.
+
+DEPRECATED as of Phase 8: the React SPA at frontend/dist/ is now the
+default UI. This module remains so existing operators keep their
+muscle memory (``http://localhost:8000/dashboard/...`` still works),
+and so the SPA can re-use the cookie auth + redact + finalize HTMX
+endpoints that live here.
+
+Removal plan (a future minor release):
+1. Extract ``/login`` GET+POST and ``/logout`` into ``routes/auth_pages.py``
+2. Extract ``/dashboard/.../redact`` into ``routes/redact.py`` (still
+   needed by the SPA's evidence redaction button until the in-SPA
+   canvas redactor ships)
+3. Delete the remaining dashboard page handlers + templates
+4. Delete the dashboard test files (they now duplicate SPA coverage)
 
 Renders the Jinja2 templates in ``twisted.web.templates`` against the
 same SQLite store the JSON API talks to. Data shaping is done here so
@@ -247,8 +261,9 @@ def logout() -> Any:
 # when they open the engine URL in a browser.
 
 
-@router.get("/", include_in_schema=False)
-def root_redirect() -> RedirectResponse:
+def make_root_redirect_to_dashboard() -> RedirectResponse:
+    """Helper used by ``app.py`` when the SPA isn't built yet —
+    in that case the root URL redirects to the legacy /dashboard/."""
     return RedirectResponse(url="/dashboard/",
                             status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 

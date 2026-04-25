@@ -10,14 +10,17 @@ Cross-host pen-testing automation + training suite. A FastAPI engine and SQLite 
 2. **WordPress stress testing** — 4 phases (baseline → escalating concurrency → endpoint isolation → remediation diff)
 3. **WiFi pentest** — 4 phases (pre-flight → enumeration → handshake/WPS attacks → post-exploitation)
 
-> **Status:** All seven planned phases complete. The suite now ships
-> the foundations + all three procedures + web dashboard + training mode
-> + four Docker practice labs + reporting polish (PDF, exec one-pager,
-> XLSX) + browser PII redaction + OneDrive finalize flow. See
+> **Status:** All eight phases complete. The original 7-phase scope
+> shipped (foundations + 3 procedures + dashboard + training + labs +
+> reporting), and Phase 8 replaces the Jinja2 dashboard with a
+> Vite + React + TypeScript + Tailwind + shadcn/ui SPA driven by an
+> engagement-lifecycle stepper, plus a per-engagement RoE Tool Policy
+> that gates step runs by both step ID and capability. Documented in
 > [`docs/PHASE1_COMPLETION.md`](docs/PHASE1_COMPLETION.md),
 > [`docs/PHASE5_COMPLETION.md`](docs/PHASE5_COMPLETION.md),
-> [`docs/PHASE6_COMPLETION.md`](docs/PHASE6_COMPLETION.md), and
-> [`docs/PHASE7_COMPLETION.md`](docs/PHASE7_COMPLETION.md).
+> [`docs/PHASE6_COMPLETION.md`](docs/PHASE6_COMPLETION.md),
+> [`docs/PHASE7_COMPLETION.md`](docs/PHASE7_COMPLETION.md), and
+> [`docs/PHASE8_COMPLETION.md`](docs/PHASE8_COMPLETION.md).
 
 ## Architecture at a glance
 
@@ -56,7 +59,18 @@ twisted import-ovh
 twisted engagement list
 ```
 
-The engine binds to `127.0.0.1:8000`. WSL2 auto-forwards localhost to the Windows host, so a Chrome/Edge tab pointed at `http://localhost:8000` reaches the dashboard from Windows. The token is auto-filled on the login page when the dashboard runs on the same host as the engine — usually a single click.
+The engine binds to `127.0.0.1:8000`. WSL2 auto-forwards localhost to the Windows host, so a Chrome/Edge tab pointed at `http://localhost:8000` reaches the React SPA from Windows. The token is auto-filled on the login page when the dashboard runs on the same host as the engine — usually a single click.
+
+### Frontend dev (hot reload)
+
+```bash
+cd ~/twisted_suite/frontend
+npm install                # one-time
+npm run dev                # serves at http://localhost:5173/
+                           # /api, /login, /logout proxy to :8000
+```
+
+Production build (`npm run build` → `frontend/dist/`) is automatically served by FastAPI at `/` whenever the directory exists. Legacy Jinja dashboard remains at `/dashboard/*` for the time being.
 
 ## Quick start (Windows worker)
 

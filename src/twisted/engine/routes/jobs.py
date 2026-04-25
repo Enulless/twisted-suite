@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
 from ...core import models as m
+from ...core import tool_policy as tp
 from ...core.db import session_scope
 from ...core.evidence import sha256_file
 from ...core.paths import to_canonical
@@ -61,6 +62,22 @@ def queue_step(payload: StepRunRequest, request: Request) -> StepRunOut:
         e = s.get(m.Engagement, payload.engagement_id)
         if e is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "engagement not found")
+
+        # RoE tool-policy gate: refuse to queue a step that's been
+        # blocked for this engagement (either directly or via a
+        # cascaded capability block).
+        decision = tp.is_step_allowed(s, e.id, step)
+        if not decision.allowed:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "blocked_by_tool_policy",
+                    "reason": decision.reason,
+                    "target_kind": decision.target_kind,
+                    "target_value": decision.target_value,
+                },
+            )
+
         # Merge engagement context into params (so {{ engagement.primary_domain }}
         # placeholders resolve worker-side).
         merged_params = {**(step.params or {}), **(payload.params or {})}
@@ -131,6 +148,14 @@ def claim_next_job(
                 job.error = "step removed from procedure"
                 continue
             engagement = sr.engagement
+            # Defensive RoE check: tool policy may have flipped
+            # to block this step or one of its capabilities AFTER
+            # the job was queued. Skip such jobs (they remain pending
+            # until either the policy is unblocked or an operator
+            # cancels them).
+            decision = tp.is_step_allowed(s, engagement.id, step)
+            if not decision.allowed:
+                continue
             paths = EngagementPaths.for_engagement(engagement.client).ensure()
             work_dir = paths.step_dir(sr.stage)
             # Atomic claim

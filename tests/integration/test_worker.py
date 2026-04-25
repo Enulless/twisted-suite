@@ -213,7 +213,8 @@ def engine_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tupl
     reset_settings(s)
     app = create_app(settings=s)
     token = ensure_token(s)
-    client = TestClient(app)
+    from tests.conftest import ApiClient
+    client = ApiClient(TestClient(app))
     try:
         yield client, token, s
     finally:

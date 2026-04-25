@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dark theme — slate-leaning palette tuned for ops dashboards */
+    --background: 222 18% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 16% 10%;
+    --card-foreground: 210 20% 96%;
+    --primary: 199 89% 56%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 222 18% 14%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 16% 14%;
+    --muted-foreground: 215 14% 65%;
+    --accent: 222 16% 16%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 78% 58%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 12% 22%;
+    --input: 222 12% 22%;
+    --ring: 199 89% 56%;
+    --radius: 0.5rem;
+
+    /* Severity palette */
+    --sev-critical: 0 78% 58%;
+    --sev-high: 16 86% 60%;
+    --sev-medium: 36 92% 55%;
+    --sev-low: 142 60% 50%;
+    --sev-info: 210 14% 60%;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 14% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 14% 12%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 16% 96%;
+    --secondary-foreground: 222 14% 12%;
+    --muted: 210 16% 96%;
+    --muted-foreground: 215 14% 40%;
+    --accent: 210 16% 94%;
+    --accent-foreground: 222 14% 12%;
+    --destructive: 0 78% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 16% 88%;
+    --input: 215 16% 88%;
+    --ring: 199 89% 48%;
+  }
+
+  body {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  *, *::before, *::after {
+    @apply border-border;
+  }
+
+  /* Custom scrollbar matching the dark theme */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { @apply bg-card; }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-md border-2 border-card;
+  }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-accent; }
+}
+
+@layer components {
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+           text-[10px] font-semibold uppercase tracking-wider
+           border;
+  }
+  .pill-sev-critical { color: hsl(var(--sev-critical)); border-color: hsl(var(--sev-critical)); background: hsla(0, 78%, 58%, 0.1); }
+  .pill-sev-high     { color: hsl(var(--sev-high));     border-color: hsl(var(--sev-high)); }
+  .pill-sev-medium   { color: hsl(var(--sev-medium));   border-color: hsl(var(--sev-medium)); }
+  .pill-sev-low      { color: hsl(var(--sev-low));      border-color: hsl(var(--sev-low)); }
+  .pill-sev-info     { color: hsl(var(--sev-info));     border-color: hsl(var(--sev-info)); }
+}

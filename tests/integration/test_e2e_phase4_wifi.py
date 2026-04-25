@@ -46,7 +46,7 @@ def live_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("TWISTED_ENGINE_URL", f"http://127.0.0.1:{port}")
     monkeypatch.setenv("TWISTED_TOKEN", token)
     try:
-        yield f"http://127.0.0.1:{port}", token
+        yield f"http://127.0.0.1:{port}/api", token
     finally:
         server.should_exit = True
         th.join(timeout=5)

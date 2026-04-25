@@ -108,11 +108,12 @@ def engine_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[t
         time.sleep(0.05)
     if not server.started:
         pytest.fail("uvicorn failed to start")
-    base = f"http://127.0.0.1:{port}"
-    monkeypatch.setenv("TWISTED_ENGINE_URL", base)
+    engine_root = f"http://127.0.0.1:{port}"
+    base = f"{engine_root}/api"
+    monkeypatch.setenv("TWISTED_ENGINE_URL", engine_root)
     monkeypatch.setenv("TWISTED_TOKEN", token)
     try:
-        yield base, token
+        yield base, token, engine_root
     finally:
         server.should_exit = True
         thread.join(timeout=5)
@@ -129,11 +130,14 @@ class TestRunImport:
     def test_full_import_creates_engagement_and_assets(
         self, fake_twisted_root: Path, engine_server, monkeypatch
     ) -> None:
-        base, token = engine_server
+        base, token, engine_root = engine_server
+        # `engine_url` goes to EngineClient which auto-prefixes /api,
+        # so pass the bare host:port; `base` is the api-prefixed URL
+        # used for direct httpx calls in the test body.
         out = run_import(
             twisted_root=fake_twisted_root,
             client_name="OVH",
-            engine_url=base,
+            engine_url=engine_root,
             token=token,
         )
         assert out.get("engagement_id")

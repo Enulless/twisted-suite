@@ -110,6 +110,12 @@ class EvidenceKind(enum.StrEnum):
     NOTE = "note"
 
 
+class ToolPolicyKind(enum.StrEnum):
+    """What a tool-policy row targets."""
+    STEP = "step"            # individual procedure step id (e.g. bb.stage4.nmap_full)
+    CAPABILITY = "capability"  # capability tag (e.g. wrk, monitor-mode)
+
+
 # ──────────────────────────── Tables ────────────────────────────
 
 
@@ -140,6 +146,9 @@ class Engagement(Base):
         back_populates="engagement", cascade="all, delete-orphan"
     )
     step_runs: Mapped[list[StepRun]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
+    tool_policy: Mapped[list[EngagementToolPolicy]] = relationship(
         back_populates="engagement", cascade="all, delete-orphan"
     )
 
@@ -365,6 +374,43 @@ class Job(Base):
     step_run: Mapped[StepRun] = relationship(back_populates="job")
 
 
+class EngagementToolPolicy(Base):
+    """Per-engagement RoE tool policy.
+
+    One row per (engagement, target_kind, target_value). ``target_kind``
+    is either ``step`` (the row gates a specific procedure step id) or
+    ``capability`` (the row gates a capability tag — blocking it
+    cascades to disable every step that ``requires:`` it).
+
+    Default semantics: a step is allowed unless an explicit row with
+    ``allowed=False`` matches it (directly by step_id, or indirectly
+    via a required capability).
+    """
+
+    __tablename__ = "engagement_tool_policy"
+    __table_args__ = (
+        UniqueConstraint("engagement_id", "target_kind", "target_value",
+                         name="uq_tool_policy_eng_kind_target"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(
+        ForeignKey("engagement.id"), index=True
+    )
+    target_kind: Mapped[ToolPolicyKind] = mapped_column(Enum(ToolPolicyKind))
+    target_value: Mapped[str] = mapped_column(String(120), index=True)
+    allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    engagement: Mapped[Engagement] = relationship(back_populates="tool_policy")
+
+
 class TrainingProgress(Base):
     __tablename__ = "training_progress"
     __table_args__ = (
@@ -386,6 +432,7 @@ __all__ = [
     "CVE",
     "Engagement",
     "EngagementStatus",
+    "EngagementToolPolicy",
     "Evidence",
     "EvidenceKind",
     "Finding",
@@ -402,6 +449,7 @@ __all__ = [
     "StepRun",
     "StepStatus",
     "Technology",
+    "ToolPolicyKind",
     "TrainingProgress",
     "Worker",
     "WorkerStatus",

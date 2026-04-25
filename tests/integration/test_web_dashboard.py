@@ -173,11 +173,18 @@ def test_unauthenticated_dashboard_redirects_to_login(dash_app) -> None:
 
 
 @pytest.mark.integration
-def test_root_redirects_to_dashboard(dash_app) -> None:
+def test_root_serves_spa_or_redirects_to_dashboard(dash_app) -> None:
+    """When the SPA is built (frontend/dist/ present), GET / returns
+    the SPA shell. When it isn't, GET / 307-redirects to /dashboard/.
+    Both are valid Phase 8A states; this test accepts either."""
     client, _, _ = dash_app
     r = client.get("/")
-    assert r.status_code == 307
-    assert r.headers["location"] == "/dashboard/"
+    if r.status_code == 200:
+        # SPA mode: index.html with the React mount point
+        assert 'id="root"' in r.text
+    else:
+        assert r.status_code == 307
+        assert r.headers["location"] == "/dashboard/"
 
 
 @pytest.mark.integration
