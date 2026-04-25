@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import markdown as _markdown
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -26,6 +27,7 @@ from ...core import models as m
 from ...core.cvss import parse_vector, severity_for_score
 from ...core.db import session_scope
 from ...modules.recon.risk_scoring import tier as risk_tier
+from ...training import LessonNotFound, QuizNotFound, grade
 from ..auth import read_token
 from ..web_auth import (
     is_valid as session_is_valid,
@@ -35,6 +37,7 @@ from ..web_auth import (
     make_session_cookie_response,
     require_dashboard_session,
 )
+from . import training as training_routes
 
 # Configured once at module import via ``configure_templates`` from
 # ``app.py`` so the same Jinja2 environment (with the package
@@ -390,6 +393,166 @@ def finding_detail_page(engagement_id: int, finding_id: int,
         request, "finding_detail.html",
         _ctx(request, engagement=eng, finding=finding),
     )
+
+
+# ──────────────────────────── Training pages ────────────────────────────
+
+
+def _training_user(request: Request) -> str:
+    """Resolve the training username. For now: query/cookie/default.
+
+    A future patch can persist the user via a separate cookie, but the
+    cookie session today only carries the bearer token.
+    """
+    return request.query_params.get("user") or "default"
+
+
+@router.get("/dashboard/training", response_class=HTMLResponse,
+            dependencies=[Depends(require_dashboard_session)])
+def training_index(request: Request,
+                   procedure: str | None = None) -> HTMLResponse:
+    lesson_repo, quiz_repo = training_routes._repos(request)
+    factory = request.app.state.engine_state.session_factory
+    user = _training_user(request)
+    lessons = lesson_repo.all()
+    quizzes = quiz_repo.all()
+    rows: list[dict] = []
+    completed_count = 0
+    by_proc: dict[str, list[dict]] = {}
+    with session_scope(factory) as s:
+        for step_id, lsn in sorted(lessons.items()):
+            if procedure and lsn.procedure != procedure:
+                continue
+            attempt = training_routes._last_attempt(s, user=user, step_id=step_id)
+            row = {
+                "step_id": step_id,
+                "procedure": lsn.procedure,
+                "stage": lsn.stage,
+                "title": lsn.title,
+                "has_quiz": step_id in quizzes,
+                "last_score": attempt.score if attempt else None,
+                "completed": bool(attempt and (attempt.score or 0.0) >= 0.7),
+            }
+            rows.append(row)
+            if row["completed"]:
+                completed_count += 1
+            by_proc.setdefault(lsn.procedure, []).append(row)
+    return _t().TemplateResponse(
+        request, "training_index.html",
+        _ctx(request, lessons=rows, by_procedure=by_proc, user=user,
+             quiz_count=sum(1 for r in rows if r["has_quiz"]),
+             completed_count=completed_count),
+    )
+
+
+@router.get("/dashboard/training/{step_id}", response_class=HTMLResponse,
+            dependencies=[Depends(require_dashboard_session)])
+def training_detail(step_id: str, request: Request) -> HTMLResponse:
+    lesson_repo, quiz_repo = training_routes._repos(request)
+    user = _training_user(request)
+    try:
+        lsn = lesson_repo.get(step_id)
+    except LessonNotFound as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lesson not found") from e
+    quiz_obj = None
+    quiz_public = None
+    try:
+        quiz_obj = quiz_repo.get(step_id)
+        quiz_public = {
+            "id": quiz_obj.id, "step_id": quiz_obj.step_id,
+            "title": quiz_obj.title, "pass_threshold": quiz_obj.pass_threshold,
+            "questions": [
+                {"id": q.id, "type": q.type, "prompt": q.prompt,
+                 "choices": q.choices}
+                for q in quiz_obj.questions
+            ],
+        }
+    except QuizNotFound:
+        pass
+    factory = request.app.state.engine_state.session_factory
+    progress = None
+    with session_scope(factory) as s:
+        attempt = training_routes._last_attempt(s, user=user, step_id=step_id)
+        if attempt is not None:
+            progress = {
+                "score": attempt.score or 0.0,
+                "passed": (attempt.score or 0.0) >= 0.7,
+                "completed_at": attempt.completed_at,
+            }
+    lesson_view = {
+        "step_id": lsn.step_id, "procedure": lsn.procedure,
+        "stage": lsn.stage, "title": lsn.title,
+        "estimated_minutes": lsn.estimated_minutes,
+    }
+    lesson_html = _markdown.markdown(
+        lsn.body, extensions=["fenced_code", "tables"]
+    )
+    return _t().TemplateResponse(
+        request, "training_detail.html",
+        _ctx(request, lesson=lesson_view, lesson_html=lesson_html,
+             quiz=quiz_public, progress=progress, user=user),
+    )
+
+
+@router.post("/dashboard/training/{step_id}/quiz",
+             response_class=HTMLResponse,
+             dependencies=[Depends(require_dashboard_session)])
+async def training_quiz_submit(step_id: str, request: Request) -> HTMLResponse:
+    """HTMX target: accept form-encoded quiz responses, grade, persist,
+    and return a fragment with the per-question breakdown."""
+    _, quiz_repo = training_routes._repos(request)
+    try:
+        quiz = quiz_repo.get(step_id)
+    except QuizNotFound:
+        return HTMLResponse(
+            '<p class="flash-error">No quiz available for this lesson.</p>',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    form = await request.form()
+    responses = {q.id: str(form.get(q.id, "")) for q in quiz.questions}
+    user = _training_user(request)
+    graded = grade(quiz, responses)
+    when = datetime.now(UTC)
+    factory = request.app.state.engine_state.session_factory
+    with session_scope(factory) as s:
+        existing = s.execute(
+            select(m.TrainingProgress).where(
+                m.TrainingProgress.user == user,
+                m.TrainingProgress.lesson_id == step_id,
+                m.TrainingProgress.quiz_id == quiz.id,
+            )
+        ).scalar_one_or_none()
+        notes = (f"correct={graded.correct_count}/{graded.total} "
+                 f"passed={graded.passed}")
+        if existing is not None:
+            existing.score = graded.score
+            existing.completed_at = when
+            existing.notes = notes
+        else:
+            s.add(m.TrainingProgress(
+                user=user, lesson_id=step_id, quiz_id=quiz.id,
+                score=graded.score, completed_at=when, notes=notes,
+            ))
+    sev_class = "done" if graded.passed else "failed"
+    parts = [
+        f'<h4>Score: <span class="status status-{sev_class}">'
+        f'{graded.correct_count}/{graded.total} '
+        f'({graded.score:.0%}) — {"PASS" if graded.passed else "FAIL"}'
+        f'</span></h4>'
+    ]
+    parts.append('<ul style="margin-top:8px">')
+    for pq in graded.per_question:
+        marker = "✓" if pq.correct else "✗"
+        css = "status-done" if pq.correct else "status-failed"
+        explain = (f'<br><span class="muted">{pq.explain.strip()}</span>'
+                   if pq.explain else "")
+        parts.append(
+            f'<li><span class="status {css}">{marker}</span> '
+            f'{pq.question_id}: answered <code>{pq.response or ""}</code>, '
+            f'expected <code>{pq.expected}</code>{explain}</li>'
+        )
+    parts.append("</ul>")
+    return HTMLResponse("".join(parts))
 
 
 @router.get("/dashboard/engagements/{engagement_id}/runs",

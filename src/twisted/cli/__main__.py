@@ -357,9 +357,10 @@ def token_verify(ctx: typer.Context) -> None:
             raise typer.Exit(1) from e
 
 
-from . import import_ovh  # noqa: E402
+from . import import_ovh, training  # noqa: E402
 
 import_ovh.attach(app)
+training.attach(app)
 
 
 if __name__ == "__main__":

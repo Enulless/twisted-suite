@@ -1,0 +1,64 @@
+id: bb.stage1.crtsh.quiz
+step_id: bb.stage1.crtsh
+title: Certificate Transparency Log Harvesting
+pass_threshold: 0.75
+
+questions:
+  - id: q1
+    type: multiple_choice
+    prompt: |
+      What does Certificate Transparency provide?
+    choices:
+      a: Encrypted SSL traffic between browsers and servers
+      b: Public, append-only logs of every issued SSL/TLS certificate
+      c: Mutual TLS authentication for client certificates
+      d: A replacement for the DNS hierarchy
+    answer: b
+    explain: |
+      CT logs are public, append-only, cryptographically verifiable
+      records of every certificate issued by a participating CA. They
+      let anyone discover SSL-issued subdomains, including ones the
+      issuing organisation may have forgotten about.
+
+  - id: q2
+    type: short_answer
+    prompt: |
+      Which character do you prepend to a domain on crt.sh to match
+      every subdomain? (just the character, no quotes)
+    answer: "%"
+    accept:
+      - "%."
+    case_sensitive: false
+    explain: |
+      `%.example.com` matches every subdomain of `example.com` because
+      `%` is the SQL-style wildcard crt.sh exposes.
+
+  - id: q3
+    type: multiple_choice
+    prompt: |
+      Which two certificate fields contain the actual hostname list?
+    choices:
+      a: Issuer and Serial Number
+      b: Common Name (CN) and Subject Alternative Name (SAN)
+      c: Public Key and Signature Algorithm
+      d: Validity Not-Before and Not-After
+    answer: b
+    explain: |
+      Modern CAs issue certificates that cover multiple hostnames; the
+      full list is in the SAN extension. The CN is the legacy primary
+      name. Both should be harvested.
+
+  - id: q4
+    type: short_answer
+    prompt: |
+      Name one other CT log search service besides crt.sh.
+    answer: censys
+    accept:
+      - censys.io
+      - google ct
+      - facebook ct
+      - certspotter
+    case_sensitive: false
+    explain: |
+      Censys, Google's CT search, Facebook's CT monitor, and SSLMate's
+      certspotter all expose CT data through different UIs.

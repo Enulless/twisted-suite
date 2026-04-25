@@ -1,0 +1,40 @@
+id: bb.stage1.email_security.quiz
+step_id: bb.stage1.email_security
+title: Email Security Posture (SPF / DKIM / DMARC)
+pass_threshold: 0.66
+
+questions:
+  - id: q1
+    type: short_answer
+    prompt: |
+      Which DNS record type is used to publish SPF, DKIM, and DMARC
+      policies? (just the record type)
+    answer: TXT
+    case_sensitive: false
+
+  - id: q2
+    type: multiple_choice
+    prompt: |
+      What does SPF (Sender Policy Framework) actually do?
+    choices:
+      a: Encrypts the email body in transit between MTAs
+      b: Lists the IPs and hostnames authorised to send mail for a domain
+      c: Forces clients to use TLS when connecting to the mail server
+      d: Stores DKIM private keys for outbound signing
+    answer: b
+
+  - id: q3
+    type: multiple_choice
+    prompt: |
+      A domain with no DMARC record (no _dmarc.example.com TXT) is
+      vulnerable to which class of attack?
+    choices:
+      a: Cross-site scripting in the company webmail
+      b: Email spoofing — anyone can send mail "from" the domain with no policy enforced
+      c: SQL injection via the MX record
+      d: BGP route hijacks
+    answer: b
+    explain: |
+      Without DMARC, recipient mail servers have no policy to enforce
+      around SPF/DKIM failures, so spoofed mail often lands in inboxes
+      anyway. A `p=reject` DMARC policy is the fix.

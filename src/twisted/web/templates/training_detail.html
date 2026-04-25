@@ -1,0 +1,58 @@
+{% extends "_base.html" %}
+{% block title %}{{ lesson.title }} — Training{% endblock %}
+{% block content %}
+<section>
+  <p class="muted">
+    <a href="/dashboard/training">all training</a> ·
+    {{ lesson.procedure }} · {{ lesson.stage or '—' }} ·
+    ~{{ lesson.estimated_minutes or '?' }} min
+  </p>
+  <h2>{{ lesson.title }}</h2>
+  <p class="muted"><code>{{ lesson.step_id }}</code></p>
+</section>
+
+<section class="lesson-body">
+  {{ lesson_html|safe }}
+</section>
+
+{% if quiz %}
+<section>
+  <h3>Quiz: {{ quiz.title }}</h3>
+  <p class="muted">
+    {{ quiz.questions|length }} questions ·
+    pass at {{ '%d' % (quiz.pass_threshold * 100) }}%
+    {% if progress %}
+      · last attempt: {{ '%d' % (progress.score * 100) }}%
+      ({{ 'PASS' if progress.passed else 'FAIL' }})
+    {% endif %}
+  </p>
+
+  <form id="quiz-form"
+        hx-post="/dashboard/training/{{ lesson.step_id }}/quiz"
+        hx-target="#quiz-result" hx-swap="innerHTML">
+    {% for q in quiz.questions %}
+    <fieldset>
+      <legend>Q{{ loop.index }}. {{ q.prompt }}</legend>
+      {% if q.type == 'multiple_choice' %}
+        {% for key, val in q.choices.items() %}
+        <label style="display:block">
+          <input type="radio" name="{{ q.id }}" value="{{ key }}" required>
+          <strong>{{ key }}.</strong> {{ val }}
+        </label>
+        {% endfor %}
+      {% else %}
+        <input type="text" name="{{ q.id }}" autocomplete="off">
+      {% endif %}
+    </fieldset>
+    {% endfor %}
+    <button type="submit">Submit answers</button>
+  </form>
+
+  <div id="quiz-result"></div>
+</section>
+{% else %}
+<section>
+  <p class="muted">No quiz available for this lesson.</p>
+</section>
+{% endif %}
+{% endblock %}

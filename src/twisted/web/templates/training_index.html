@@ -1,0 +1,54 @@
+{% extends "_base.html" %}
+{% block title %}Training — Twisted{% endblock %}
+{% block content %}
+<section>
+  <h2>Training</h2>
+  <p class="muted">
+    {{ lessons|length }} lessons, {{ quiz_count }} with quizzes ·
+    {{ completed_count }} completed by <strong>{{ user }}</strong>
+  </p>
+  <p class="muted">
+    Filter:
+    <a href="/dashboard/training">all</a> ·
+    <a href="/dashboard/training?procedure=bb">bug bounty</a> ·
+    <a href="/dashboard/training?procedure=wp_stress">wp stress</a> ·
+    <a href="/dashboard/training?procedure=wifi">wifi</a>
+  </p>
+</section>
+
+{% for proc_id, items in by_procedure.items() %}
+<section>
+  <h3>{{ proc_id }} ({{ items|length }} lessons)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Step</th>
+        <th>Title</th>
+        <th>Stage</th>
+        <th>Quiz</th>
+        <th>Last Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in items %}
+      <tr>
+        <td>{% if r.completed %}<span class="status status-done">✓</span>{% endif %}</td>
+        <td><code><a href="/dashboard/training/{{ r.step_id }}">{{ r.step_id }}</a></code></td>
+        <td>{{ r.title }}</td>
+        <td>{{ r.stage or '—' }}</td>
+        <td>{% if r.has_quiz %}<span class="badge mode-auto">yes</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {% if r.last_score is not none %}
+            {{ '%d' % (r.last_score * 100) }}%
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% endblock %}

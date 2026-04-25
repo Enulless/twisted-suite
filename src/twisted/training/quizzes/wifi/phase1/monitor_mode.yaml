@@ -1,0 +1,39 @@
+id: wifi.phase1.monitor_mode.quiz
+step_id: wifi.phase1.monitor_mode
+title: Enabling Monitor Mode
+pass_threshold: 0.7
+
+questions:
+  - id: q1
+    type: multiple_choice
+    prompt: |
+      Why does `airmon-ng check kill` need to run before enabling
+      monitor mode?
+    choices:
+      a: To free up disk space on the testing machine
+      b: To stop NetworkManager / wpa_supplicant from fighting the
+         adapter for control
+      c: To shut down the wireless router under test
+      d: To clear out previous airodump capture files
+    answer: b
+
+  - id: q2
+    type: short_answer
+    prompt: |
+      After `airmon-ng start wlan0`, what is the typical new interface
+      name for the monitor-mode pseudo-device?
+    answer: wlan0mon
+    case_sensitive: false
+
+  - id: q3
+    type: multiple_choice
+    prompt: |
+      Why is monitor mode required to capture WPA handshakes?
+    choices:
+      a: It increases the wireless adapter's transmit power
+      b: It lets the adapter receive ALL 802.11 frames regardless of
+         destination MAC, including handshakes between other clients
+         and the AP
+      c: It forces the AP to broadcast its WPA passphrase
+      d: It encrypts captured frames in the pcap file
+    answer: b

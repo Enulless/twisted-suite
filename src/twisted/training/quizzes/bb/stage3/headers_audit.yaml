@@ -1,0 +1,53 @@
+id: bb.stage3.headers_audit.quiz
+step_id: bb.stage3.headers_audit
+title: HTTP Security Headers Audit
+pass_threshold: 0.7
+
+questions:
+  - id: q1
+    type: multiple_choice
+    prompt: |
+      Which header tells the browser to only ever connect over HTTPS
+      to a domain (preventing accidental http:// downgrades)?
+    choices:
+      a: X-Frame-Options
+      b: Strict-Transport-Security
+      c: X-Content-Type-Options
+      d: Referrer-Policy
+    answer: b
+
+  - id: q2
+    type: short_answer
+    prompt: |
+      What value of X-Content-Type-Options stops the browser from
+      MIME-sniffing the response body?
+    answer: nosniff
+    case_sensitive: false
+
+  - id: q3
+    type: multiple_choice
+    prompt: |
+      A response includes `Access-Control-Allow-Origin: *`. Why is
+      this a finding worth raising?
+    choices:
+      a: It blocks every browser from loading the page
+      b: It permits any web origin to read the response cross-origin, broadening the attack surface
+      c: It disables CSRF protection on the entire site
+      d: It rewrites every URL to use HTTPS
+    answer: b
+    explain: |
+      Wildcard CORS is fine for genuinely public APIs but devastating
+      on authenticated endpoints — any malicious site can read user
+      data on behalf of the victim's browser session.
+
+  - id: q4
+    type: multiple_choice
+    prompt: |
+      Which header can be used as a modern alternative to
+      X-Frame-Options for clickjacking protection?
+    choices:
+      a: Content-Security-Policy (frame-ancestors directive)
+      b: X-XSS-Protection
+      c: Cache-Control
+      d: Permissions-Policy
+    answer: a

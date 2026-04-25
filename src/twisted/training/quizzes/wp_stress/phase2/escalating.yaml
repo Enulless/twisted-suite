@@ -1,0 +1,41 @@
+id: wp_stress.phase2.escalating.quiz
+step_id: wp_stress.phase2.escalating
+title: Escalating-Concurrency Stress Testing
+pass_threshold: 0.66
+
+questions:
+  - id: q1
+    type: multiple_choice
+    prompt: |
+      What is the primary signal that you've found the saturation
+      point during an escalating wrk run?
+    choices:
+      a: The response body shrinks by 50%
+      b: Error rate (non-2xx + socket errors) crosses a threshold and
+         requests/sec stops scaling with concurrency
+      c: The server log file rotates
+      d: SSL handshakes start using TLS 1.3
+    answer: b
+
+  - id: q2
+    type: short_answer
+    prompt: |
+      Which wrk flag enables the per-request latency histogram in the
+      output? (one flag, including dashes)
+    answer: --latency
+    accept:
+      - latency
+    case_sensitive: false
+
+  - id: q3
+    type: multiple_choice
+    prompt: |
+      Why must Phase 1 capture a baseline metric set BEFORE Phase 2
+      begins?
+    choices:
+      a: To prove to the client that the test was worth their money
+      b: To distinguish attack-induced anomalies from baseline
+         performance noise during analysis
+      c: To populate the master spreadsheet with rows
+      d: To meet OWASP ASVS reporting requirements
+    answer: b

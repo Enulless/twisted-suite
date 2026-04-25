@@ -10,7 +10,7 @@ Cross-host pen-testing automation + training suite. A FastAPI engine and SQLite 
 2. **WordPress stress testing** — 4 phases (baseline → escalating concurrency → endpoint isolation → remediation diff)
 3. **WiFi pentest** — 4 phases (pre-flight → enumeration → handshake/WPS attacks → post-exploitation)
 
-> **Status:** Phases 1‑5 complete (foundations + all three procedures + web dashboard). Phase 6 (training mode) is the current build target. See [`docs/PHASE1_COMPLETION.md`](docs/PHASE1_COMPLETION.md), [`docs/PHASE5_COMPLETION.md`](docs/PHASE5_COMPLETION.md), and the project plan for full scope.
+> **Status:** Phases 1‑6 complete (foundations + all three procedures + web dashboard + training mode). Phase 7 (practice labs + reporting polish) is the current build target. See [`docs/PHASE1_COMPLETION.md`](docs/PHASE1_COMPLETION.md), [`docs/PHASE5_COMPLETION.md`](docs/PHASE5_COMPLETION.md), [`docs/PHASE6_COMPLETION.md`](docs/PHASE6_COMPLETION.md), and the project plan for full scope.
 
 ## Architecture at a glance
 
@@ -86,6 +86,8 @@ twisted worker windows
 | `twisted report build --format html,pdf,csv` | Build the engagement report |
 | `twisted finalize finding-42` | Promote evidence into the OneDrive finalized tree |
 | `twisted import-ovh` | One-shot import of historic `recon_ovh_*` artifacts |
+| `twisted train list` / `show` / `quiz` / `progress` | Training mode: lessons + interactive quizzes + completion tracking |
+| `twisted train extract --bb <docx> --wp <docx> --wifi <docx>` | Rebuild lesson markdown from procedure docx files |
 | `twisted token verify` | Health check (engine reachable, token valid) |
 
 Every CLI command is just an HTTP client to the engine — no direct DB access from any process other than the engine.

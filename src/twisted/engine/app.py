@@ -21,6 +21,7 @@ from .routes import engagements as engagements_router
 from .routes import findings as findings_router
 from .routes import jobs as jobs_router
 from .routes import system as system_router
+from .routes import training as training_router
 from .routes import web as web_router
 from .routes import workers as workers_router
 from .state import EngineState
@@ -73,6 +74,7 @@ def create_app(*, settings: Settings | None = None,
     app.include_router(assets_router.router)
     app.include_router(findings_router.router)
     app.include_router(jobs_router.router)
+    app.include_router(training_router.router)
 
     # Browser dashboard (Phase 5): Jinja2 + HTMX, cookie-auth on top of
     # the same bearer token. Static assets at /static/, login at /login,

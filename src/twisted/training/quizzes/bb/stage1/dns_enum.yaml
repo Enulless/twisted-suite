@@ -1,0 +1,46 @@
+id: bb.stage1.dns_enum.quiz
+step_id: bb.stage1.dns_enum
+title: DNS Record Enumeration
+pass_threshold: 0.75
+
+questions:
+  - id: q1
+    type: multiple_choice
+    prompt: |
+      Which DNS record type maps a hostname to an IPv4 address?
+    choices:
+      a: AAAA
+      b: CNAME
+      c: A
+      d: MX
+    answer: c
+
+  - id: q2
+    type: multiple_choice
+    prompt: |
+      Why are TXT records valuable in passive recon?
+    choices:
+      a: They contain encrypted credentials for the domain
+      b: They reveal SaaS providers via verification tokens (e.g. google-site-verification, atlassian-domain-verification)
+      c: They list every email address that has ever sent mail from the domain
+      d: They store the full Apache config of the web server
+    answer: b
+    explain: |
+      Companies sprinkle TXT records to prove ownership to SaaS
+      providers, accidentally leaking the entire vendor inventory
+      (Google Workspace, Atlassian, Zendesk, Salesforce, …).
+
+  - id: q3
+    type: short_answer
+    prompt: |
+      What does the +short flag do on a `dig` query?
+    answer: short
+    accept:
+      - shortens output
+      - returns only the answer
+      - omits headers and just prints record values
+      - prints only the answer section
+    case_sensitive: false
+    explain: |
+      `+short` strips the verbose dig header and returns only the
+      record values, ideal for piping into other tools.
