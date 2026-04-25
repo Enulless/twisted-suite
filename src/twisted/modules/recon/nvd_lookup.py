@@ -109,7 +109,7 @@ def run(ctx: ModuleContext) -> ModuleResult:
             continue
         flat = [_flatten(v) for v in raw if v]
         for entry in flat:
-            for asset_id, host in assets_for:
+            for asset_id, _host in assets_for:
                 cves_per_asset.setdefault(asset_id, []).append(entry)
         all_results.append({"keyword": keyword, "matches": len(flat), "cves": flat})
         if not api_key:

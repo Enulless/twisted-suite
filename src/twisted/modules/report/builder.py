@@ -8,7 +8,7 @@ returned as evidence so the Finalize flow can promote them to OneDrive.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ...core.paths import to_canonical
 from ...core.reporting import (
@@ -54,13 +54,13 @@ def build(ctx: ModuleContext) -> ModuleResult:
 
     scope_summary = "\n".join(f"{r['kind']}: {r['pattern']}" for r in scope_rows)
     started = datetime.fromisoformat(engagement["created_at"].replace("Z", "+00:00")) \
-        if engagement.get("created_at") else datetime.now(timezone.utc)
+        if engagement.get("created_at") else datetime.now(UTC)
 
     data = ReportData(
         client=engagement["client"],
         primary_domain=engagement.get("primary_domain"),
         engagement_started=started,
-        engagement_ended=datetime.now(timezone.utc),
+        engagement_ended=datetime.now(UTC),
         scope_summary=scope_summary,
         asset_count=len(assets),
         findings=[_summary_from(f) for f in findings],

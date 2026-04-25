@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
@@ -35,7 +35,7 @@ def upsert_assets_in_session(
 ) -> list[m.Asset]:
     """Shared upsert helper. Caller is responsible for transaction commit."""
     scope = scope or _scope_for(engagement)
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     out: list[m.Asset] = []
     seen_in_batch: dict[str, m.Asset] = {}
     for item in items:

@@ -48,7 +48,9 @@ def capture(ctx: ModuleContext) -> ModuleResult:
         deauth_thread = threading.Thread(target=_deauth, daemon=True)
         deauth_thread.start()
 
-    cap_result = run_cmd(capture_cmd, timeout=duration + 15)
+    # The capture writes to disk (out_prefix.cap); the subprocess return
+    # value is unused — we verify success by inspecting the .cap file.
+    run_cmd(capture_cmd, timeout=duration + 15)
     if deauth_thread:
         deauth_thread.join(timeout=1)
 

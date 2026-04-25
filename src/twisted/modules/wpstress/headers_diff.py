@@ -16,7 +16,6 @@ from ...core.storage import write_artifact
 from ..base import EvidenceRef, FindingDraft, ModuleContext, ModuleResult
 from ..recon.headers_audit import audit_headers
 
-
 _LEAKY_HEADERS = ("X-Powered-By", "Server", "X-AspNet-Version", "X-Generator", "X-Debug-Token")
 
 

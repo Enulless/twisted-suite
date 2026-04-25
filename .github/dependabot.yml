@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Python deps in pyproject.toml
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+    groups:
+      # Group minor/patch security updates so they land in one PR
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions versions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "deps"
+      - "ci"

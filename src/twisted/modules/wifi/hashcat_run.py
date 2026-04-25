@@ -42,7 +42,9 @@ def run(ctx: ModuleContext) -> ModuleResult:
     if rules:
         cmd += ["-r", rules]
     timeout = int((ctx.params or {}).get("timeout", 600))
-    r = run_cmd(cmd, timeout=timeout)
+    # hashcat's results land in --potfile-path on disk; subprocess return
+    # value isn't surfaced (cracks are read from the potfile below).
+    run_cmd(cmd, timeout=timeout)
 
     cracked = ""
     findings: list[FindingDraft] = []
@@ -56,7 +58,7 @@ def run(ctx: ModuleContext) -> ModuleResult:
                 break
     if cracked:
         findings.append(FindingDraft(
-            title=f"WPA2 passphrase recovered from captured handshake",
+            title="WPA2 passphrase recovered from captured handshake",
             severity="critical",
             cwe="CWE-521",
             affected_component=f"WPA2-PSK on {pcap_path}",

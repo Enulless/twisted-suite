@@ -7,6 +7,7 @@ has bound a USB WiFi adapter via usbipd-win).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 
@@ -39,10 +40,8 @@ def supports_monitor(interface: str) -> bool:
     for line in r.stdout.splitlines():
         s = line.strip()
         if s.startswith("wiphy"):
-            try:
+            with contextlib.suppress(IndexError):
                 phy = f"phy{s.split()[1]}"
-            except IndexError:
-                pass
     if phy:
         info = run_cmd(["iw", "phy", phy, "info"], timeout=5)
         return "monitor" in info.stdout.lower()

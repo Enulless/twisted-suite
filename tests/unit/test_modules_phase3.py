@@ -6,8 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from twisted.modules.base import ModuleContext
 from twisted.modules.wpstress import (
     ab_baseline,
@@ -252,6 +250,7 @@ class TestWPScan:
 
     def test_parse_findings_from_json(self, tmp_path: Path) -> None:
         import json as _json
+
         from twisted.core.runner import CommandResult
         cr = CommandResult(cmd=[], returncode=0,
                            stdout=_json.dumps(SAMPLE_WPSCAN), stderr="", duration_ms=1)

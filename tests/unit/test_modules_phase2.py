@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from twisted.modules.base import ModuleContext, ModuleResult
+from twisted.modules.base import ModuleContext
 from twisted.modules.recon import (
     aggregators,
     email_security,

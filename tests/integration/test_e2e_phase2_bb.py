@@ -15,7 +15,6 @@ runs through real HTTP against a real uvicorn-backed engine. Verifies:
 
 from __future__ import annotations
 
-import json
 import socket
 import threading
 import time
@@ -27,7 +26,6 @@ import httpx
 import pytest
 import uvicorn
 
-from twisted.client.api import EngineClient
 from twisted.core.settings import Settings, reset_settings
 from twisted.engine.app import create_app
 from twisted.engine.auth import ensure_token
@@ -161,6 +159,7 @@ def test_full_bb_workflow_with_mocked_modules(live_engine) -> None:
         offer = r.json()
         assert offer is not None
         from contextlib import ExitStack
+
         from twisted.worker.dispatch import dispatch, serialise_result
         with ExitStack() as stack:
             for module, kwargs in patches.items():
@@ -220,14 +219,16 @@ def test_full_bb_workflow_with_mocked_modules(live_engine) -> None:
 
     # Risk scoring -> uses _engine_callback module which makes HTTP calls.
     # Override its env settings so it points at our test engine.
+    from twisted.core.settings import Settings as _S
+    from twisted.core.settings import reset_settings as _r
     from twisted.modules.recon import risk_scoring as risk_mod
-    from twisted.core.settings import Settings as _S, reset_settings as _r
     new = _S()  # picks up TWISTED_ENGINE_URL/TWISTED_TOKEN env vars
     _r(new)
     try:
         # Drive risk_scoring directly (it's an "engine-aware" module that uses
         # EngineClient internally).
         from datetime import datetime
+
         from twisted.modules.base import ModuleContext
         ctx = ModuleContext(
             engagement_id=eng_id, step_id="bb.stage3.risk_score",
