@@ -52,7 +52,9 @@ twisted = ["procedures/*.yaml", "training/lessons/**/*.md", "training/quizzes/**
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# `-m "not network"` keeps the default `pytest` invocation hermetic.
+# Run live-network smoke tests with `pytest -m network` (or `-m ""`).
+addopts = "-ra --strict-markers -m 'not network'"
 markers = [
     "integration: end-to-end tests that boot the engine and a worker",
     "network: tests that hit the real internet (skipped by default)",

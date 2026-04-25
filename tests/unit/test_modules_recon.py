@@ -246,6 +246,27 @@ Certificate:
                 DNS:acme.example, DNS:www.acme.example
 """
 
+SAMPLE_ECDSA_CERT_TEXT = """\
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 2
+        Signature Algorithm: ecdsa-with-SHA384
+        Issuer: C = US, O = DigiCert Inc, CN = DigiCert Global G3
+        Validity
+            Not Before: Jan 30 00:00:00 2026 GMT
+            Not After : Mar  1 23:59:59 2027 GMT
+        Subject: CN = acme.example
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Subject Alternative Name:
+                DNS:acme.example
+"""
+
 
 class TestTlsAudit:
     def test_parse_cert_text_extracts_fields(self) -> None:
@@ -253,9 +274,31 @@ class TestTlsAudit:
         assert parsed["subject"].startswith("CN = acme.example")
         assert parsed["issuer"].startswith("C = US")
         assert parsed["key_bits"] == 2048
+        assert parsed["key_algorithm"] == "rsa"
         assert "acme.example" in parsed["san"]
         assert "www.acme.example" in parsed["san"]
         assert parsed["signature_algorithm"] == "sha256WithRSAEncryption"
+
+    def test_parse_cert_text_recognises_ecdsa(self) -> None:
+        parsed = tls_audit.parse_cert_text(SAMPLE_ECDSA_CERT_TEXT)
+        assert parsed["key_bits"] == 256
+        assert parsed["key_algorithm"] == "ec"
+        assert parsed["signature_algorithm"] == "ecdsa-with-SHA384"
+
+    def test_is_weak_key_thresholds(self) -> None:
+        # RSA: 1024 weak, 2048 strong
+        assert tls_audit.is_weak_key("rsa", 1024) is True
+        assert tls_audit.is_weak_key("rsa", 2048) is False
+        # EC: 224 strong, 192 weak (rare in practice)
+        assert tls_audit.is_weak_key("ec", 256) is False
+        assert tls_audit.is_weak_key("ec", 192) is True
+        # Unknown algorithm with strong RSA-equivalent bits → fall back to RSA rule
+        assert tls_audit.is_weak_key(None, 1024) is True
+        assert tls_audit.is_weak_key(None, 2048) is False
+        # Ed25519/Ed448 sizes are fixed and always strong
+        assert tls_audit.is_weak_key("ed25519", 256) is False
+        # Missing bits → can't decide → not weak
+        assert tls_audit.is_weak_key("rsa", None) is False
 
     def test_run_with_stubbed_cert(self, tmp_path: Path) -> None:
         with patch.object(tls_audit, "tool_available", return_value=True), \
@@ -263,13 +306,22 @@ class TestTlsAudit:
             result = tls_audit.run(_ctx(tmp_path, host="acme.example"))
         assert result.success
 
-    def test_run_flags_weak_key(self, tmp_path: Path) -> None:
+    def test_run_does_not_flag_modern_ecdsa_p256(self, tmp_path: Path) -> None:
+        """Regression: a 256-bit ECDSA key (NIST P-256, the modern default
+        for Let's Encrypt + most CDNs) must NOT be reported as weak."""
+        with patch.object(tls_audit, "tool_available", return_value=True), \
+             patch.object(tls_audit, "fetch_cert_text", return_value=SAMPLE_ECDSA_CERT_TEXT):
+            result = tls_audit.run(_ctx(tmp_path, host="acme.example"))
+        titles = [f.title for f in result.findings]
+        assert not any("Weak TLS key strength" in t for t in titles), titles
+
+    def test_run_flags_weak_rsa_key(self, tmp_path: Path) -> None:
         weak = SAMPLE_CERT_TEXT.replace("Public-Key: (2048 bit)", "Public-Key: (1024 bit)")
         with patch.object(tls_audit, "tool_available", return_value=True), \
              patch.object(tls_audit, "fetch_cert_text", return_value=weak):
             result = tls_audit.run(_ctx(tmp_path, host="acme.example"))
         titles = [f.title for f in result.findings]
-        assert any("Weak TLS key strength (1024-bit)" in t for t in titles)
+        assert any("Weak TLS key strength (RSA 1024-bit)" in t for t in titles), titles
 
     def test_run_flags_expired_cert(self, tmp_path: Path) -> None:
         expired = SAMPLE_CERT_TEXT.replace(

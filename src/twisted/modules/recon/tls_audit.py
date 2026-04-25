@@ -34,10 +34,15 @@ def fetch_cert_text(host: str, port: int = 443, *, timeout: int = 10) -> str:
 
 
 def parse_cert_text(text: str) -> dict:
-    """Pull issuer / subject / validity / SAN / key-bits out of openssl text."""
+    """Pull issuer / subject / validity / SAN / key-bits / key-algo out of
+    ``openssl x509 -text`` output.
+
+    ``key_algorithm`` is normalised to one of ``"rsa" | "ec" | "dsa" |
+    "ed25519" | "ed448" | None`` so downstream weak-key checks can pick
+    the right threshold (RSA-2048 ≢ ECDSA-256)."""
     out: dict = {"subject": None, "issuer": None, "not_before": None,
                  "not_after": None, "san": [], "key_bits": None,
-                 "signature_algorithm": None}
+                 "key_algorithm": None, "signature_algorithm": None}
     if not text:
         return out
     sub = re.search(r"Subject:\s*(.+)", text)
@@ -46,6 +51,7 @@ def parse_cert_text(text: str) -> dict:
     na = re.search(r"Not After\s*:\s*(.+)", text)
     sig = re.search(r"Signature Algorithm:\s*(\S+)", text)
     bits = re.search(r"Public-Key:\s*\((\d+)\s*bit\)", text)
+    pka = re.search(r"Public Key Algorithm:\s*(\S+)", text)
     if sub:
         out["subject"] = sub.group(1).strip()
     if iss:
@@ -58,11 +64,56 @@ def parse_cert_text(text: str) -> dict:
         out["signature_algorithm"] = sig.group(1).strip()
     if bits:
         out["key_bits"] = int(bits.group(1))
+    if pka:
+        out["key_algorithm"] = _normalise_key_algorithm(pka.group(1).strip())
     san_block = re.search(r"X509v3 Subject Alternative Name:\s*\n\s*(.+)", text)
     if san_block:
         out["san"] = [s.strip().removeprefix("DNS:")
                       for s in san_block.group(1).split(",") if s.strip()]
     return out
+
+
+def _normalise_key_algorithm(raw: str) -> str | None:
+    """Map openssl's algorithm OID/name to a short canonical label."""
+    s = raw.lower()
+    if "rsa" in s:
+        return "rsa"
+    if "ecpublickey" in s or s.startswith("ec") or s == "id-ecpublickey":
+        return "ec"
+    if "ed25519" in s:
+        return "ed25519"
+    if "ed448" in s:
+        return "ed448"
+    if "dsa" in s:
+        return "dsa"
+    return None
+
+
+# Algorithm-aware weak-key thresholds. RSA/DSA ≥ 2048 is the modern
+# baseline; for elliptic-curve keys, NIST/CNSA consider ≥ 224 bits
+# acceptable (P-256 is 256 bits and stronger than RSA-2048). Ed25519 /
+# Ed448 have fixed key sizes that are always strong, so we skip the
+# check for them.
+_MIN_KEY_BITS_BY_ALGO: dict[str, int] = {
+    "rsa": 2048,
+    "dsa": 2048,
+    "ec": 224,
+}
+
+
+def is_weak_key(algorithm: str | None, bits: int | None) -> bool:
+    """True iff (algorithm, bits) is below the modern recommended floor."""
+    if bits is None:
+        return False
+    if algorithm is None:
+        # Conservative fallback: assume RSA semantics if openssl didn't
+        # report an algorithm. Better a false positive than missing a
+        # genuinely weak RSA key.
+        return bits < 2048
+    threshold = _MIN_KEY_BITS_BY_ALGO.get(algorithm)
+    if threshold is None:
+        return False  # ed25519 / ed448 — fixed strong sizes
+    return bits < threshold
 
 
 def _parse_openssl_date(s: str | None) -> datetime | None:
@@ -114,12 +165,17 @@ def run(ctx: ModuleContext) -> ModuleResult:
     for a in audits:
         host = a.get("host")
         bits = a.get("key_bits")
-        if bits is not None and bits < 2048:
+        algo = a.get("key_algorithm")
+        if is_weak_key(algo, bits):
+            algo_label = (algo or "unknown").upper()
             findings.append(FindingDraft(
-                title=f"Weak TLS key strength ({bits}-bit) on {host}",
+                title=f"Weak TLS key strength ({algo_label} {bits}-bit) on {host}",
                 severity="high", cwe="CWE-326",
                 affected_component=f"https://{host}",
-                description=f"Server certificate uses a {bits}-bit public key (below 2048).",
+                description=(
+                    f"Server certificate uses a {bits}-bit {algo_label} public key, "
+                    f"below the modern recommended floor."
+                ),
                 remediation="Reissue with at least a 2048-bit RSA or ECDSA P-256 key.",
             ))
         not_after = _parse_openssl_date(a.get("not_after"))
