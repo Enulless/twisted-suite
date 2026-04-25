@@ -3,3 +3,9 @@ dist/
 .vite/
 *.log
 .DS_Store
+# tsc -b emits these incremental-build artifacts next to the configs
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+vite.config.d.ts.map
+vite.config.js.map
