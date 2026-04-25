@@ -69,12 +69,32 @@ class Settings(BaseSettings):
     worker_heartbeat_interval: float = 15.0
     job_claim_timeout: int = 30  # seconds before a stalled claim is reclaimable
 
+    # Phase 8: legacy /dashboard/* dial. Three modes:
+    #   "enabled"  — legacy renders normally, no banner (Phase 7-and-earlier behavior)
+    #   "banner"   — legacy renders, every page shows a deprecation banner
+    #                pointing operators at the equivalent SPA route. (default)
+    #   "disabled" — legacy returns 410 Gone; deep links 307 to / (the SPA).
+    # Override via TWISTED_LEGACY_UI=enabled|banner|disabled.
+    legacy_ui: str = Field(default="banner")
+
     @field_validator("archive_root", mode="before")
     @classmethod
     def _empty_archive_means_disabled(cls, v: object) -> object:
         if v in ("", None):
             return None
         return v
+
+    @field_validator("legacy_ui", mode="before")
+    @classmethod
+    def _normalise_legacy_ui(cls, v: object) -> str:
+        s = str(v or "banner").strip().lower()
+        if s in ("on", "true", "1", "yes"):
+            return "enabled"
+        if s in ("off", "false", "0", "no"):
+            return "disabled"
+        if s not in ("enabled", "banner", "disabled"):
+            return "banner"
+        return s
 
     @property
     def db_url(self) -> str:

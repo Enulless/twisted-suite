@@ -63,6 +63,8 @@ from ...labs import lab_up as run_lab_up
 from ...modules.recon.risk_scoring import tier as risk_tier
 from ...training import LessonNotFound, QuizNotFound, grade
 from ..auth import read_token
+from ..legacy_gate import current_mode as legacy_mode
+from ..legacy_gate import spa_equivalent
 from ..web_auth import (
     is_valid as session_is_valid,
 )
@@ -98,10 +100,17 @@ router = APIRouter(tags=["dashboard"])
 
 def _ctx(request: Request, **extra: Any) -> dict[str, Any]:
     """Build the base template context with version + engine_url globals."""
+    mode = legacy_mode()
+    spa_link = spa_equivalent(request.url.path) if mode == "banner" else "/"
     base = {
         "request": request,
         "version": __version__,
         "engine_url": str(request.base_url).rstrip("/"),
+        # Phase 8 deprecation banner — _base.html renders it when
+        # legacy_ui_mode == "banner". The link points at the SPA
+        # equivalent of the current legacy URL.
+        "legacy_ui_mode": mode,
+        "spa_equivalent_url": spa_link,
     }
     base.update(extra)
     return base

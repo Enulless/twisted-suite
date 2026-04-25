@@ -1,0 +1,71 @@
+---
+description: Forbid new pages in the deprecated /dashboard/* legacy UI; route all UI work to the React SPA.
+globs:
+  - src/twisted/engine/routes/web.py
+  - src/twisted/web/templates/**
+  - src/twisted/web/static/**
+alwaysApply: false
+---
+
+# Legacy UI is deprecated — do not extend it
+
+The Jinja2 + HTMX dashboard at `src/twisted/engine/routes/web.py` and
+`src/twisted/web/templates/**` is the **deprecated** Phase 5-7 UI.
+Phase 8 replaced it with a React SPA at [`frontend/`](frontend/) and
+the legacy surface only stays online to:
+
+1. Serve the cookie-auth flow (`/login` GET+POST, `/logout`) that the
+   SPA still consumes
+2. Serve the screenshot redaction tool (`/dashboard/.../redact`) until
+   an in-SPA redactor ships
+3. Provide a fallback that operators with old bookmarks still find
+
+## Rules for any change in this area
+
+- **DO NOT add new `@router.get(...)` page handlers** to
+  `src/twisted/engine/routes/web.py`. New UI pages go in
+  [`frontend/src/pages/`](frontend/src/pages/) and get a route in
+  [`frontend/src/App.tsx`](frontend/src/App.tsx).
+- **DO NOT add new `.html` files** to `src/twisted/web/templates/`.
+  Use [`frontend/src/components/`](frontend/src/components/) and
+  shadcn primitives in `frontend/src/components/ui/`.
+- **DO NOT add new HTMX fragment endpoints** (e.g. `hx-post=...`).
+  Use TanStack Query mutations in the SPA instead.
+- The CI guard in
+  [`tests/integration/test_legacy_ui_guards.py`](tests/integration/test_legacy_ui_guards.py)
+  enforces both counts (templates + GET routes). Adding to either side
+  fails CI with an explanatory message.
+
+## Acceptable edits to legacy files
+
+- Removing a page (after porting it to the SPA) — lower the
+  `EXPECTED_*` constants in the guard test to match.
+- Bug fixes in the auth flow (`/login`, `/logout`).
+- Bug fixes in the screenshot redactor.
+- Banner / deprecation notice copy changes in `_base.html`.
+
+## When in doubt
+
+If the user asks for "a page that does X" or "a button that does Y" and
+the natural place to put it is the legacy dashboard, push back: explain
+that legacy is deprecated and propose the SPA equivalent. The SPA's
+data + auth pipeline (TanStack Query + the `/api/*` endpoints + cookie
+session) is identical to the legacy dashboard's, so functional parity
+is always achievable.
+
+The only acceptable exception is fixing an existing legacy bug while
+the user is mid-task and doesn't have time to switch to the SPA.
+
+## Off-switch
+
+The `TWISTED_LEGACY_UI` env var (defined in
+[`src/twisted/core/settings.py`](src/twisted/core/settings.py)) controls
+the legacy surface:
+
+- `enabled`  — legacy renders unchanged (no banner)
+- `banner`   — legacy renders, every page shows "switch to SPA" banner
+              (default)
+- `disabled` — every legacy GET 307s to the SPA equivalent; POST
+              endpoints (login, redact submit) still work
+
+Operators who want a hard cutover set `TWISTED_LEGACY_UI=disabled`.

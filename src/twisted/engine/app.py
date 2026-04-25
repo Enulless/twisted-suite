@@ -7,7 +7,8 @@ from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -113,6 +114,22 @@ def create_app(*, settings: Settings | None = None,
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # Phase 8 legacy gate: when TWISTED_LEGACY_UI=disabled, every
+    # /dashboard/* GET 307s to the SPA equivalent. POST handlers
+    # (login, logout, redact submit, finalize fragments, htmx polls)
+    # bypass the gate so the SPA + automation continue to work.
+    @app.middleware("http")
+    async def _legacy_dashboard_gate(request: Request, call_next):
+        from .legacy_gate import current_mode, spa_equivalent
+        if (request.method == "GET"
+                and request.url.path.startswith("/dashboard")
+                and current_mode() == "disabled"):
+            return RedirectResponse(
+                url=spa_equivalent(request.url.path),
+                status_code=307,
+            )
+        return await call_next(request)
+
     # Phase 8: serve the Vite SPA from frontend/dist when present.
     # Mounting last so the JSON API (/api/*), legacy dashboard
     # (/dashboard/*), /login, /logout, and /static all win over the
@@ -126,7 +143,10 @@ def create_app(*, settings: Settings | None = None,
                   name="spa")
     else:
         # No SPA built — root URL redirects to the legacy /dashboard/.
-        from fastapi.responses import RedirectResponse
+        # (Don't re-import RedirectResponse here — Python's compile-time
+        # local-vs-free-variable rule would shadow the module-level
+        # binding for every closure inside create_app, including the
+        # _legacy_dashboard_gate middleware above.)
         @app.get("/", include_in_schema=False)
         def _root_redirect() -> RedirectResponse:
             return web_router.make_root_redirect_to_dashboard()
